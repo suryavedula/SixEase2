@@ -1,0 +1,28 @@
+# --- Secrets / local env ---
+.env
+*.env.local
+
+# --- Python (backend, TASK-002+) ---
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Node / frontend (TASK-003+) ---
+node_modules/
+dist/
+.vite/
+.npm-cache/
+
+# --- Editor / OS noise ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# --- Claude Code local files (excluded from repo) ---
+CLAUDE.md
+.claude/

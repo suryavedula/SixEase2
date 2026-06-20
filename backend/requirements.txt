@@ -1,0 +1,39 @@
+# Wealth Advisory Workbench — FastAPI backend (TASK-002, EPIC-01)
+# Pinned for reproducible dev. Heavier deps (LangGraph, provider SDKs) are added
+# by their owning tasks (TASK-012+ providers, TASK-053).
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+structlog==24.4.0
+
+# --- TASK-004: schema & migrations -----------------------------------------
+alembic==1.14.0       # schema migrations (async template, asyncpg DSN)
+pgvector==0.3.6       # SQLAlchemy Vector column type for embeddings
+
+# --- TASK-005: Redis + MinIO clients ---------------------------------------
+redis==5.2.1          # async client (redis.asyncio): cache + LPUSH/BRPOP queues
+minio==7.2.15         # S3-compatible object store client
+
+# --- TASK-012: LLM provider abstraction ------------------------------------
+openai==1.54.0        # OpenAI-compatible async client; works with Ollama/OpenRouter/Phoeniqs via base_url
+tenacity==8.5.0       # retry decorator for JSON parse failures from weak small models
+
+# --- TASK-013: SIX MCP client ----------------------------------------------
+httpx>=0.23.0,<0.28.0  # async HTTP for SIX JSON-RPC; pin range matches openai transitive dep
+
+# --- TASK-039: MailHog test-send (MSG9) ------------------------------------
+aiosmtplib==3.0.1    # async SMTP client; plain-text to mailhog:1025, no TLS
+
+# --- TASK-046: voice note upload (multipart form) --------------------------
+python-multipart==0.0.20  # required by FastAPI for UploadFile / Form endpoints
+
+# --- TASK-053: LangGraph orchestrator -----------------------------------------
+langgraph>=1.0,<2.0   # StateGraph orchestrator; langchain-core transitive dep compatible with pydantic 2.x
+
+# --- TASK-007: tests --------------------------------------------------------
+pytest==8.3.4         # test runner (first test dependency; project standard)
+pytest-asyncio==0.24.0  # @pytest.mark.asyncio for async client tests (TASK-013/014)

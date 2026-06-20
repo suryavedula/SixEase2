@@ -1,0 +1,170 @@
+# ============================================================================
+# Wealth Advisory Workbench — local stack (TASK-001, EPIC-01)
+# Base data/dev services only. App/runtime services are added by later tasks
+# (see commented stubs at the bottom). Compose v2 — no top-level `version:`.
+#   cp .env.example .env && docker compose up -d
+# ============================================================================
+
+name: ${COMPOSE_PROJECT_NAME:-wealth}
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16        # ships the `vector` extension — no custom build
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Enables `CREATE EXTENSION vector` on first boot (runs only on empty data dir).
+      - ./infra/postgres/initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [wealthnet]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [wealthnet]
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_API_PORT}:9000"       # S3 API
+      - "${MINIO_CONSOLE_PORT}:9001"   # web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks: [wealthnet]
+    restart: unless-stopped
+
+  pgadmin:
+    image: dpage/pgadmin4:8
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "${PGADMIN_PORT}:80"
+    volumes:
+      - pgadmindata:/var/lib/pgadmin
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/misc/ping || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [wealthnet]
+    restart: unless-stopped
+
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    ports:
+      - "${MAILHOG_SMTP_PORT}:1025"    # SMTP
+      - "${MAILHOG_UI_PORT}:8025"      # web UI
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8025 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks: [wealthnet]
+    restart: unless-stopped
+
+  # ==========================================================================
+  # App/runtime services — added by their owning tasks. Kept as stubs so the
+  # network/volumes above are reused without restructuring.
+  # ==========================================================================
+  backend:              # TASK-002 — FastAPI skeleton
+    build: ./backend
+    env_file: [.env]
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      # Bind-mount for hot reload (uvicorn --reload). Code edits take effect
+      # without a rebuild; rebuild only when requirements.txt changes.
+      - ./backend:/app
+      # Provided workbooks (read-only) — consumed by the XLSX parser (TASK-007)
+      # and downstream CRM/portfolio ingestion.
+      - ./data:/app/data:ro
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+      minio:    { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks: [wealthnet]
+    restart: unless-stopped
+
+  frontend:             # TASK-003 — React + Vite + Tailwind app shell
+    build: ./frontend
+    env_file: [.env]
+    ports:
+      # Host port is configurable (defaults to 5173) to dodge local collisions;
+      # container always serves on 5173.
+      - "${FRONTEND_PORT:-5173}:5173"
+    volumes:
+      # Bind-mount for hot reload; anonymous volume keeps the image's
+      # node_modules (don't let the host shadow it).
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks: [wealthnet]
+    restart: unless-stopped
+
+  # ==========================================================================
+  # Remaining app/runtime services — added by their owning tasks.
+  # ==========================================================================
+  #
+  ollama:             # TASK-012 — local Gemma 3 12B (OpenAI-compatible /v1)
+    image: ollama/ollama:latest
+    ports: ["11434:11434"]
+    volumes: [ollamadata:/root/.ollama]
+    networks: [wealthnet]
+    restart: unless-stopped
+  #
+  # mcp-proxy:          # TASK-013 — local proxy to the external SIX MCP server
+  #   build: ./mcp-proxy
+  #   env_file: [.env]
+  #   networks: [wealthnet]
+
+networks:
+  wealthnet:
+    driver: bridge
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  pgadmindata:
+  ollamadata:          # TASK-012 — persists pulled Ollama models across restarts

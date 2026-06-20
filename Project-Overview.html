@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Wealth Advisor Workbench — Project Overview</title>
+<style>
+  :root{
+    --bg:#0b0f17; --panel:#131a26; --panel2:#1a2435; --panel3:#212d42;
+    --border:#243044; --text:#e6edf6; --muted:#8a98ad; --dim:#5b6b82;
+    --blue:#3b82f6; --green:#22c55e; --red:#ef4444; --amber:#f59e0b; --purple:#8b5cf6; --teal:#14b8a6;
+    --radius:14px; --shadow:0 8px 30px rgba(0,0,0,.35);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{background:radial-gradient(1200px 600px at 70% -10%,#16203200,#0b0f17),var(--bg);
+    color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  a{color:var(--blue)}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 22px}
+  /* top nav */
+  header.top{position:sticky;top:0;z-index:50;background:rgba(11,15,23,.86);backdrop-filter:blur(10px);border-bottom:1px solid var(--border)}
+  .topbar{display:flex;align-items:center;gap:16px;height:62px}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.2px}
+  .brand .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--blue),var(--purple));display:grid;place-items:center;font-size:14px}
+  .brand small{display:block;font-weight:500;color:var(--muted);font-size:11px;letter-spacing:.3px}
+  nav.tabs{margin-left:auto;display:flex;gap:4px;flex-wrap:wrap}
+  nav.tabs button{background:transparent;border:1px solid transparent;color:var(--muted);padding:8px 14px;border-radius:10px;cursor:pointer;font-size:13.5px;font-weight:600}
+  nav.tabs button:hover{color:var(--text);background:var(--panel)}
+  nav.tabs button.active{color:#fff;background:var(--panel2);border-color:var(--border)}
+  /* sections */
+  section.view{display:none;padding:34px 0 70px}
+  section.view.active{display:block;animation:fade .25s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+  h1{font-size:30px;margin:0 0 6px;letter-spacing:-.4px}
+  h2{font-size:20px;margin:34px 0 12px;letter-spacing:-.2px;display:flex;align-items:center;gap:10px}
+  h2 .num{font-size:12px;color:var(--blue);border:1px solid var(--border);background:var(--panel);border-radius:8px;padding:2px 8px}
+  h3{font-size:15px;margin:18px 0 8px;color:#cdd8e8}
+  p{color:#c4cfde}
+  .lead{font-size:17px;color:#d6e0ee;max-width:760px}
+  .tag{display:inline-block;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;letter-spacing:.3px}
+  .t-blue{background:rgba(59,130,246,.16);color:#93c5fd}
+  .t-green{background:rgba(34,197,94,.16);color:#86efac}
+  .t-red{background:rgba(239,68,68,.16);color:#fca5a5}
+  .t-amber{background:rgba(245,158,11,.16);color:#fcd34d}
+  .t-purple{background:rgba(139,92,246,.16);color:#c4b5fd}
+  .t-teal{background:rgba(20,184,166,.16);color:#5eead4}
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:repeat(2,1fr)}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:880px){.g2,.g3,.g4{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:18px}
+  .card h3{margin-top:0}
+  .muted{color:var(--muted)}
+  .pill{font-size:12px;color:var(--muted);border:1px solid var(--border);border-radius:999px;padding:3px 10px;display:inline-block;margin:3px 4px 0 0}
+  ul.clean{margin:8px 0;padding-left:18px}ul.clean li{margin:5px 0;color:#c4cfde}
+  .kbd{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;background:#0d1320;border:1px solid var(--border);border-radius:6px;padding:1px 6px;color:#9fd0ff}
+  .hr{height:1px;background:var(--border);margin:26px 0}
+  /* principle banner */
+  .thesis{background:linear-gradient(135deg,rgba(59,130,246,.12),rgba(139,92,246,.10));border:1px solid var(--border);border-radius:18px;padding:26px 28px;margin:18px 0}
+  .thesis .big{font-size:26px;font-weight:800;letter-spacing:-.4px;background:linear-gradient(90deg,#93c5fd,#c4b5fd);-webkit-background-clip:text;background-clip:text;color:transparent}
+  /* architecture layers */
+  .layer{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin:0}
+  .layer .lh{font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .nodes{display:flex;gap:10px;flex-wrap:wrap}
+  .node{flex:1 1 0;min-width:130px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:11px 12px}
+  .node b{display:block;font-size:13.5px}
+  .node span{font-size:11.5px;color:var(--muted)}
+  .node.acc-blue{border-left:3px solid var(--blue)}.node.acc-green{border-left:3px solid var(--green)}
+  .node.acc-amber{border-left:3px solid var(--amber)}.node.acc-purple{border-left:3px solid var(--purple)}
+  .node.acc-red{border-left:3px solid var(--red)}.node.acc-teal{border-left:3px solid var(--teal)}
+  .flowdown{text-align:center;font-size:20px;margin:6px 0;color:#3a4760}
+  .arrowrow{display:flex;justify-content:center;gap:60px;color:var(--muted);margin:4px 0;font-size:18px}
+  /* pipeline (flows) */
+  .pipe{display:flex;align-items:stretch;gap:0;flex-wrap:wrap;margin:10px 0 4px}
+  .step{flex:1 1 0;min-width:120px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:12px;position:relative}
+  .step .n{font-size:10.5px;font-weight:700;color:var(--blue);letter-spacing:.5px}
+  .step b{display:block;font-size:13px;margin:3px 0}
+  .step span{font-size:11.5px;color:var(--muted)}
+  .arr{display:flex;align-items:center;color:var(--muted);font-size:20px;padding:0 8px}
+  .loopnote{font-size:12px;color:var(--amber);margin-top:6px}
+  .loopnote::before{content:"↻ ";font-weight:700}
+  .flowcard{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px}
+  .flowcard .ft{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+  .flowcard .ft h3{margin:0}
+  /* table */
+  table{width:100%;border-collapse:collapse;margin:10px 0;font-size:13.5px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+  th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.5px}
+  td b{color:#e6edf6}
+  /* ===== PROTOTYPE ===== */
+  .app{border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:var(--shadow);background:var(--bg)}
+  .app-hd{display:flex;align-items:center;gap:12px;padding:12px 16px;background:var(--panel);border-bottom:1px solid var(--border)}
+  .app-hd .logo{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--blue),var(--purple));display:grid;place-items:center;font-size:13px}
+  .app-hd .title{font-weight:700}
+  .app-hd .title small{display:block;font-size:10px;color:var(--muted);font-weight:500}
+  .app-hd .sp{margin-left:auto}
+  .bell{position:relative;cursor:pointer;font-size:18px;color:var(--muted)}
+  .bell .badge{position:absolute;top:-6px;right:-7px;background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:0 5px}
+  .av{width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#334155,#475569);display:grid;place-items:center;font-size:11px;font-weight:700}
+  .app-body{display:grid;grid-template-columns:1fr 326px;min-height:560px}
+  @media(max-width:880px){.app-body{grid-template-columns:1fr}}
+  .canvas{padding:18px;overflow:auto;max-height:640px}
+  .ac{border-left:1px solid var(--border);background:#0e1521;padding:14px;overflow:auto;max-height:640px}
+  .ac .ach{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+  .ac .ach b{font-size:14px}
+  .ac .ach .badge{background:var(--red);color:#fff;font-size:10px;font-weight:700;border-radius:999px;padding:1px 7px}
+  .ac .mark{margin-left:auto;font-size:11px;color:var(--muted);cursor:pointer}
+  .ac-tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px}
+  .ac-tabs span{font-size:11px;color:var(--muted);border:1px solid var(--border);padding:3px 8px;border-radius:8px;cursor:pointer}
+  .ac-tabs span.on{color:#fff;background:var(--panel2)}
+  .alert{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:11px;position:relative}
+  .alert .x{position:absolute;top:9px;right:10px;color:var(--dim);cursor:pointer;font-size:13px}
+  .alert .atop{display:flex;align-items:center;gap:7px;margin-bottom:5px}
+  .alert .ttl{font-weight:700;font-size:13.5px;padding-right:14px}
+  .alert .meta{font-size:11px;color:var(--muted);margin:5px 0}
+  .alert .body{font-size:12.5px;color:#c4cfde;margin:5px 0 9px}
+  .alert .acts{display:flex;gap:7px;flex-wrap:wrap}
+  .btn{font-size:12px;font-weight:600;border-radius:8px;padding:6px 11px;border:1px solid var(--border);background:var(--panel2);color:#dbe5f2;cursor:pointer}
+  .btn:hover{border-color:#3a4a63}
+  .btn.pri{background:var(--blue);border-color:var(--blue);color:#fff}
+  .btn.danger{background:var(--red);border-color:var(--red);color:#fff}
+  .btn.ghost{background:transparent}
+  .dock{border-top:1px solid var(--border);background:var(--panel);padding:11px 16px}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:9px}
+  .chip{font-size:12px;color:#bcd; border:1px solid var(--border);background:var(--panel2);border-radius:8px;padding:5px 10px;cursor:pointer;font-family:ui-monospace,monospace}
+  .chip:hover{border-color:var(--blue);color:#fff}
+  .cmd{display:flex;align-items:center;gap:10px;background:#0d1320;border:1px solid var(--border);border-radius:11px;padding:10px 12px}
+  .cmd input{flex:1;background:transparent;border:0;outline:0;color:var(--text);font-size:14px}
+  .cmd .mic{cursor:pointer;color:var(--muted);font-size:16px}
+  .cmd .mic:hover{color:var(--blue)}
+  /* widgets inside canvas */
+  .w{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:14px}
+  .w .wt{display:flex;align-items:center;gap:9px;margin-bottom:10px}
+  .w .wt b{font-size:14.5px}
+  .w .wt .src{margin-left:auto;font-size:10.5px;color:var(--muted);cursor:help;border:1px dashed var(--border);padding:2px 7px;border-radius:7px}
+  .clientrow{display:flex;align-items:center;gap:12px}
+  .clientrow .ava{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,#334155,#1e293b);display:grid;place-items:center;font-weight:700}
+  .stat{font-size:12px;color:var(--muted)}
+  .stat b{color:var(--text)}
+  .bar{height:7px;background:#0d1320;border-radius:6px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--blue),var(--purple))}
+  .dna li{margin:6px 0;font-size:13px}
+  .quote{font-size:12px;color:#9fb0c6;border-left:2px solid var(--purple);padding-left:9px;margin:6px 0;font-style:italic}
+  .swap{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .swapbox{flex:1 1 0;min-width:150px;border:1px solid var(--border);border-radius:11px;padding:11px;background:var(--panel2)}
+  .swapbox.out{border-left:3px solid var(--red)} .swapbox.in{border-left:3px solid var(--green)}
+  .swapbox small{color:var(--muted);font-size:11px}
+  .badge2{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px}
+  .toggle{display:inline-flex;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  .toggle button{background:var(--panel2);border:0;color:var(--muted);font-size:12px;font-weight:600;padding:6px 12px;cursor:pointer}
+  .toggle button.on{background:var(--blue);color:#fff}
+  .draft{background:#0d1320;border:1px solid var(--border);border-radius:11px;padding:13px;font-size:13px;line-height:1.6;color:#d6e0ee;white-space:pre-wrap}
+  .prov{font-size:11px;color:var(--muted);margin-top:8px}
+  .prov span{border:1px solid var(--border);border-radius:6px;padding:1px 6px;margin-right:5px}
+  .heat{display:flex;gap:4px;flex-wrap:wrap;margin-top:6px}
+  .cell{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;font-size:9px;color:#0b0f17;font-weight:700}
+  .note-banner{font-size:11px;color:var(--amber);background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.25);border-radius:9px;padding:7px 10px;margin-bottom:12px}
+  .legend{font-size:11px;color:var(--muted);margin-top:6px}
+  .footer{color:var(--muted);font-size:12px;text-align:center;padding:30px 0}
+  .scenario{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+  .scenario button{font-size:12px;font-weight:600;border:1px solid var(--border);background:var(--panel);color:#cdd8e8;border-radius:9px;padding:7px 12px;cursor:pointer}
+  .scenario button:hover{border-color:var(--blue);color:#fff}
+  .roadmap-col{border-top:3px solid var(--border)}
+  .roadmap-col.now{border-top-color:var(--green)} .roadmap-col.next{border-top-color:var(--amber)} .roadmap-col.vision{border-top-color:var(--purple)}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="wrap topbar">
+    <div class="brand">
+      <div class="logo">◆</div>
+      <div>Wealth Advisor Workbench <small>name TBD · SwissHacks 2026 · SIX × Noumena × NTT DATA</small></div>
+    </div>
+    <nav class="tabs" id="tabs">
+      <button data-v="overview" class="active">Overview</button>
+      <button data-v="arch">Architecture</button>
+      <button data-v="flows">Events &amp; Loops</button>
+      <button data-v="proto">Prototype</button>
+      <button data-v="road">Roadmap</button>
+    </nav>
+  </div>
+</header>
+
+<!-- ================= OVERVIEW ================= -->
+<section class="view active" id="v-overview">
+<div class="wrap">
+  <h1>The next generation of wealth advisory</h1>
+  <p class="lead">A companion layer on top of the bank's existing CRM that lets one relationship manager give every client the hyper‑personalised, "feel‑known" care today reserved for a handful — at scale, with the human always in control.</p>
+
+  <div class="thesis">
+    <div class="big">“AI remembers. The RM connects.”</div>
+    <p style="margin:10px 0 0">In a world flooded with AI, the scarce luxury is feeling <i>known</i>. The AI remembers everything — values, holdings, life events, promises — so the human can show up as if they remembered everything. <b>AI suggests &amp; explains; the RM recommends; the client always decides.</b></p>
+  </div>
+
+  <h2><span class="num">Core</span> The product (MVP)</h2>
+  <div class="grid g3">
+    <div class="card"><span class="tag t-blue">1 · UI</span><h3>Generative, personalized UI</h3><p class="muted">RM summons views on demand and sets a default entry view. Same data, many presentations.</p></div>
+    <div class="card"><span class="tag t-green">2 · Engine</span><h3>Personalized portfolio at scale</h3><p class="muted">DNA‑driven, same‑sector, CIO‑constrained swaps with explainable fit scores across the whole book.</p></div>
+    <div class="card"><span class="tag t-amber">3 · Signals</span><h3>News + CRM‑driven alerts</h3><p class="muted">Watchlist = holdings ∪ DNA themes. Near‑real‑time, ranked, deduped queue.</p></div>
+    <div class="card"><span class="tag t-purple">4 · Voice</span><h3>Tailored message + voice</h3><p class="muted">Locked facts rendered in the client's style; query &amp; dictate by voice.</p></div>
+    <div class="card"><span class="tag t-teal">5 · Notes</span><h3>Voice → CRM notes</h3><p class="muted">Dictation becomes a structured note (RM approves) + proposed DNA updates &amp; tasks.</p></div>
+    <div class="card"><span class="tag t-red">6 · Agentic</span><h3>Tasks with safe autonomy</h3><p class="muted">Agent auto‑runs research/analysis; outward &amp; irreversible actions stay with the RM.</p></div>
+  </div>
+
+  <h2><span class="num">Rules</span> Non‑negotiable principles</h2>
+  <div class="grid g4">
+    <div class="card"><h3>👤 Human‑in‑the‑loop</h3><p class="muted">Every result ends in an action the RM takes. Nothing reaches the client automatically.</p></div>
+    <div class="card"><h3>🔍 Traceability</h3><p class="muted">Every alert/suggestion cites its evidence: the CRM note, the news item, the CIO view.</p></div>
+    <div class="card"><h3>🛡 Strategy preserved</h3><p class="muted">Personalisation is at the asset level only — the mandate &amp; CIO weights never change.</p></div>
+    <div class="card"><h3>🔗 CRM companion</h3><p class="muted">We read the existing CRM and write drafts back. We never replace it.</p></div>
+  </div>
+
+  <h2><span class="num">Why</span> Judging alignment</h2>
+  <table>
+    <tr><th>Criterion</th><th>Weight</th><th>How we win it</th></tr>
+    <tr><td><b>Creativity</b></td><td>25%</td><td>"Moments that matter" — not every signal is a trade; some are a phone call. Generative, preference‑driven UI.</td></tr>
+    <tr><td><b>Trust &amp; Explainability</b></td><td>25%</td><td>Locked‑facts message generation, provenance on every claim, safe‑autonomy boundary, glass‑box reasoning.</td></tr>
+    <tr><td><b>Feasibility</b></td><td>20%</td><td>Built on the provided SIX MCP + Event Registry + Phoeniqs; companion layer = zero CRM migration.</td></tr>
+    <tr><td><b>Visual Design</b></td><td>15%</td><td>Trust‑oriented generative workbench; the same data the RM's way.</td></tr>
+    <tr><td><b>Presentation</b></td><td>15%</td><td>One scene: one event → two clients → two different human responses, each traceable.</td></tr>
+  </table>
+  <p class="muted" style="margin-top:14px">Full specification: <span class="kbd">docs/Requirements.md</span> (§1–§19).</p>
+</div>
+</section>
+
+<!-- ================= ARCHITECTURE ================= -->
+<section class="view" id="v-arch">
+<div class="wrap">
+  <h1>System architecture</h1>
+  <p class="lead">Four layers. Data flows up from external sources, through grounded engines, into a generative UI — with the RM (the human) on top, deciding everything.</p>
+
+  <div style="margin-top:18px">
+    <div class="layer">
+      <div class="lh">👤 Human layer — the relationship manager</div>
+      <div class="nodes">
+        <div class="node acc-blue"><b>Generative UI / Canvas</b><span>summon views · default view · preference</span></div>
+        <div class="node acc-blue"><b>Action Center</b><span>ranked alerts · tasks · approvals</span></div>
+        <div class="node acc-blue"><b>Voice</b><span>query &amp; dictate</span></div>
+      </div>
+    </div>
+    <div class="arrowrow"><span>▲ render specs</span><span>▼ commands / approvals</span></div>
+
+    <div class="layer">
+      <div class="lh">🧩 Generative UI layer — component registry (our own)</div>
+      <div class="nodes">
+        <div class="node acc-purple"><b>Widget registry</b><span>DNA card · portfolio · alert · swap · message…</span></div>
+        <div class="node acc-purple"><b>Render protocol</b><span>{component, props} validated → render</span></div>
+        <div class="node acc-purple"><b>Tool‑as‑component</b><span>props from data tools — never fabricated</span></div>
+      </div>
+    </div>
+    <div class="arrowrow"><span>▲ typed props</span><span>▼ parameters</span></div>
+
+    <div class="layer">
+      <div class="lh">⚙️ Engines / agents — grounded reasoning</div>
+      <div class="nodes">
+        <div class="node acc-green"><b>DNA Builder</b><span>notes → investment identity</span></div>
+        <div class="node acc-green"><b>Personalization Engine</b><span>fit score · same‑sector swaps</span></div>
+        <div class="node acc-amber"><b>News Monitor</b><span>watchlist · firehose‑filter loop</span></div>
+        <div class="node acc-amber"><b>Alert Engine</b><span>dedup · rank · classify</span></div>
+        <div class="node acc-purple"><b>Message Generator</b><span>fact sheet → styled draft</span></div>
+        <div class="node acc-red"><b>Task / Research Agent</b><span>safe autonomy · cited briefs</span></div>
+        <div class="node acc-teal"><b>Voice/Note Pipeline</b><span>STT → structured note → write‑back</span></div>
+      </div>
+    </div>
+    <div class="arrowrow"><span>▲ data</span><span>▼ queries</span></div>
+
+    <div class="layer">
+      <div class="lh">🗄 Data &amp; providers</div>
+      <div class="nodes">
+        <div class="node acc-teal"><b>CRM (system of record)</b><span>interaction notes · read + write‑back</span></div>
+        <div class="node acc-blue"><b>SIX MCP</b><span>prices · symbology · listings (17 tools)</span></div>
+        <div class="node acc-amber"><b>Event Registry</b><span>newsapi.ai · near‑real‑time + sentiment</span></div>
+        <div class="node acc-purple"><b>Phoeniqs LLM</b><span>OpenAI‑compatible · credits provided</span></div>
+        <div class="node acc-green"><b>Portfolio data</b><span>holdings · CIO list · mandates</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h2><span class="num">Note</span> The grounding contract</h2>
+  <div class="card">
+    <p style="margin:0">The LLM <b>chooses which widget and arranges it</b> and writes narrative — but every <b>number</b> (price, weight, fit, CIO rating) is produced by a data tool from SIX / portfolio / CRM. The model is a <b>translator, not an author</b>. This single rule is what makes the workbench trustworthy.</p>
+  </div>
+</div>
+</section>
+
+<!-- ================= FLOWS / LOOPS ================= -->
+<section class="view" id="v-flows">
+<div class="wrap">
+  <h1>Events, loops &amp; workflows</h1>
+  <p class="lead">The seven pipelines that make the product run. Loops (↻) are continuous; the rest fire on an event or a command.</p>
+
+  <div class="flowcard">
+    <div class="ft"><span class="tag t-amber">LOOP</span><h3>1 · News monitoring (firehose‑filter)</h3></div>
+    <p class="muted">Continuous near‑real‑time watch over <b>every</b> client's watchlist with one poller.</p>
+    <div class="pipe">
+      <div class="step"><div class="n">EVENT</div><b>Poll feed</b><span>recent‑activity, newestUri cursor (1–5 min)</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">MATCH</div><b>Inverted index</b><span>concept/theme → clients (local fan‑out)</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">SCORE</div><b>Relevance + sentiment</b><span>own‑axis ∪ care‑axis · impact class</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">EMIT</div><b>Candidate → Alert Engine</b><span>LLM triage on shortlist only</span></div>
+    </div>
+    <div class="loopnote">repeats every interval · gapless via cursor · 1 token/poll</div>
+  </div>
+
+  <div class="flowcard">
+    <div class="ft"><span class="tag t-green">WORKFLOW</span><h3>2 · Personalized swap (within strategy)</h3></div>
+    <div class="pipe">
+      <div class="step"><div class="n">TRIGGER</div><b>DNA conflict</b><span>holding clashes w/ a value (± news)</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">UNIVERSE</div><b>Same Industry Group</b><span>CIO BUY · not held</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">FILTER</div><b>Hard exclusions</b><span>+ risk‑neutral (weights hold)</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">RANK</div><b>Fit score</b><span>tilts · threshold (no churn)</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">OUT</div><b>Swap proposal</b><span>+ mandate‑neutral proof</span></div>
+    </div>
+    <div class="loopnote">no compliant candidate → keep &amp; explain (may become a "moment")</div>
+  </div>
+
+  <div class="flowcard">
+    <div class="ft"><span class="tag t-amber">PIPELINE</span><h3>3 · Alert lifecycle</h3></div>
+    <div class="pipe">
+      <div class="step"><div class="n">IN</div><b>Signals</b><span>news · drift · stale SELL · DNA · relationship</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">CLEAN</div><b>Dedup + gate</b><span>event cluster · cooldown · threshold</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">RANK</div><b>impact×urgency×emotion</b><span>not by AUM</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">SURFACE</div><b>Action Center</b><span>action type: trade / reach‑out / FYI</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">ACT</div><b>RM acts</b><span>approve / dismiss / snooze</span></div>
+    </div>
+    <div class="loopnote">dismissals feed calibration — the system learns this RM's noise</div>
+  </div>
+
+  <div class="flowcard">
+    <div class="ft"><span class="tag t-purple">PIPELINE</span><h3>4 · Tailored message (locked facts)</h3></div>
+    <div class="pipe">
+      <div class="step"><div class="n">ASSEMBLE</div><b>Fact sheet</b><span>numbers · DNA points · evidence (deterministic)</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">RENDER</div><b>LLM in client style</b><span>uses only the fact sheet</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">GUARD</div><b>Validate</b><span>no invented numbers · draft framing</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">OUT</div><b>Draft + provenance</b><span>channel‑aware · RM edits</span></div>
+    </div>
+  </div>
+
+  <div class="flowcard">
+    <div class="ft"><span class="tag t-teal">LOOP</span><h3>5 · Voice note → CRM (the data‑creation loop)</h3></div>
+    <div class="pipe">
+      <div class="step"><div class="n">EVENT</div><b>RM dictates</b><span>after a client interaction</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">STT</div><b>Transcribe</b><span>Web Speech / STT</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">STRUCTURE</div><b>Note draft</b><span>date · medium · contact · body</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">EXTRACT</div><b>DNA updates + tasks</b><span>values · promises · life events</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">WRITE‑BACK</div><b>RM approves → CRM</b><span>feeds the DNA next cycle</span></div>
+    </div>
+    <div class="loopnote">new notes enrich the DNA → better personalization → the flywheel</div>
+  </div>
+
+  <div class="flowcard">
+    <div class="ft"><span class="tag t-red">WORKFLOW</span><h3>6 · Task with safe autonomy</h3></div>
+    <div class="pipe">
+      <div class="step"><div class="n">GEN</div><b>Task created</b><span>from alert / note / promise</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">CLASSIFY</div><b>Auto or Manual?</b><span>read‑only/research = Auto</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">RUN</div><b>Research routine</b><span>web · news · SIX · CRM</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">RESULT</div><b>Cited brief</b><span>logged + reviewable</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">GATE</div><b>RM reviews</b><span>outward actions never auto</span></div>
+    </div>
+    <div class="loopnote">autonomy boundary: gather/analyze/draft = yes · contact/order/send = human only</div>
+  </div>
+
+  <div class="flowcard">
+    <div class="ft"><span class="tag t-blue">LOOP</span><h3>7 · Generative UI render</h3></div>
+    <div class="pipe">
+      <div class="step"><div class="n">EVENT</div><b>Command / NL / voice</b><span>"show Schneider's situation"</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">ORCH</div><b>Orchestrator + tools</b><span>fetch real data</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">PLAN</div><b>View spec</b><span>pick entity + view variant</span></div>
+      <div class="arr">→</div>
+      <div class="step"><div class="n">RENDER</div><b>Registry → canvas</b><span>validated props · fallback safe</span></div>
+    </div>
+    <div class="loopnote">RM preference picks the default variant when the request doesn't specify</div>
+  </div>
+</div>
+</section>
+
+<!-- ================= PROTOTYPE ================= -->
+<section class="view" id="v-proto">
+<div class="wrap">
+  <h1>Interactive prototype <span class="tag t-amber" style="vertical-align:middle">mock data</span></h1>
+  <p class="lead">A simulation of the desired behaviour. Switch scenarios, open an alert from the Action Center, toggle the message style, or run an autonomous research task. Numbers are illustrative.</p>
+
+  <div class="scenario">
+    <button onclick="loadCanvas('book')">📊 Book view (scale)</button>
+    <button onclick="loadCanvas('schneider')">💜 Schneider — the moment</button>
+    <button onclick="loadCanvas('raeber')">🛡 Räber — guardrail</button>
+    <button onclick="loadCanvas('research')">🤖 Autonomous research</button>
+    <button onclick="loadCanvas('voice')">🎙 Voice note → CRM</button>
+  </div>
+
+  <div class="app">
+    <div class="app-hd">
+      <div class="logo">◆</div>
+      <div class="title">Advisor Workbench <small>AI relationship companion</small></div>
+      <div class="sp"></div>
+      <div class="bell" onclick="document.getElementById('acpanel').scrollIntoView({behavior:'smooth'})">🔔<span class="badge" id="bellc">3</span></div>
+      <div class="av">SM</div>
+    </div>
+    <div class="app-body">
+      <div class="canvas" id="canvas"><!-- rendered by JS --></div>
+      <div class="ac" id="acpanel">
+        <div class="ach"><b>Action Center</b> <span class="badge" id="acbadge">3</span><span class="mark" onclick="clearAlerts()">Mark all read</span></div>
+        <div class="ac-tabs">
+          <span class="on">All</span><span>Urgent 1</span><span>Clients</span><span>Market</span><span>Compliance</span><span>Tasks</span>
+        </div>
+        <div id="alerts"></div>
+      </div>
+    </div>
+    <div class="dock">
+      <div class="chips">
+        <span class="chip" onclick="loadCanvas('schneider')">/client Schneider</span>
+        <span class="chip" onclick="loadCanvas('book')">/book fit</span>
+        <span class="chip" onclick="loadCanvas('research')">/research</span>
+        <span class="chip" onclick="loadCanvas('voice')">/note voice</span>
+      </div>
+      <div class="cmd">
+        <span class="mic" title="voice" onclick="loadCanvas('voice')">🎙</span>
+        <input id="cmdin" placeholder="Type / for commands or ask anything…" onkeydown="if(event.key==='Enter')runCmd()"/>
+        <span class="mic" onclick="runCmd()">➤</span>
+      </div>
+    </div>
+  </div>
+  <p class="legend">Tip: this is a static simulation — interactions are scripted to show intended behaviour, not live data.</p>
+</div>
+</section>
+
+<!-- ================= ROADMAP ================= -->
+<section class="view" id="v-road">
+<div class="wrap">
+  <h1>Roadmap</h1>
+  <p class="lead">Ship the core in 48h; the relationship layer and external enrichment are sequenced after. Scope discipline is deliberate.</p>
+  <div class="grid g3">
+    <div class="card roadmap-col now">
+      <span class="tag t-green">NOW · demo</span>
+      <h3>Core MVP</h3>
+      <ul class="clean">
+        <li>Generative UI + book view + default view</li>
+        <li>Personalized swaps (DNA × CIO × same sector)</li>
+        <li>News+CRM alerts; the "moment vs trade" scene</li>
+        <li>Tailored message (data‑driven ⇄ values‑led)</li>
+        <li>Voice query + voice note → CRM write‑back</li>
+        <li>Autonomous research task (cited brief)</li>
+        <li>Seeded persona trigger events for reliability</li>
+      </ul>
+    </div>
+    <div class="card roadmap-col next">
+      <span class="tag t-amber">NEXT</span>
+      <h3>Depth &amp; trust</h3>
+      <ul class="clean">
+        <li>Full relationship layer: promises, quiet‑client radar, anniversaries (UC‑7–9)</li>
+        <li>Values‑drift detection &amp; sentiment trajectory (UC‑11/21)</li>
+        <li>Calibration / trust receipts (UC‑26)</li>
+        <li>Live SIX pricing across the book; real news scheduler</li>
+        <li>RM handover continuity (UC‑18)</li>
+        <li>Multilingual + Sie/Du formality (UC‑19)</li>
+      </ul>
+    </div>
+    <div class="card roadmap-col vision">
+      <span class="tag t-purple">VISION</span>
+      <h3>Beyond</h3>
+      <ul class="clean">
+        <li>Liquidity‑event &amp; cause‑match intel (Crunchbase / PitchBook)</li>
+        <li>Compliance guardrails (OpenSanctions); Swiss ZEFIX business context</li>
+        <li>GDELT thematic firehose; ownership graph (GLEIF)</li>
+        <li>MCP Apps: same widgets render inside any MCP host</li>
+        <li>Two‑way Outlook/Graph: send‑from‑RM + inbound email as a DNA signal</li>
+        <li>Wayback diffing to catch quiet corporate pivots</li>
+      </ul>
+    </div>
+  </div>
+  <div class="hr"></div>
+  <p class="muted">Parked items keep their rationale in <span class="kbd">docs/Requirements.md</span> §13–§19 and project memory.</p>
+</div>
+</section>
+
+<div class="footer">Wealth Advisor Workbench · concept overview · generated for internal visualization · mock data is illustrative.</div>
+
+<script>
+/* ---- tab nav ---- */
+document.getElementById('tabs').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b)return;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active');
+  document.querySelectorAll('section.view').forEach(s=>s.classList.remove('active'));
+  document.getElementById('v-'+b.dataset.v).classList.add('active');
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+/* ---- prototype data ---- */
+const clients=[
+  {id:'schneider',ini:'HS',name:'Hubertus Schneider',mandate:'Balanced',val:'CHF 9.99M',fit:62,alert:'Moment: pharma defunds Parkinson’s research',sev:'Critical',color:'#ef4444'},
+  {id:'raeber',ini:'RR',name:'Räber Family',mandate:'Defensive',val:'CHF 10.0M',fit:71,alert:'Guardrail: CIO pushes US AI stocks',sev:'Attention',color:'#f59e0b'},
+  {id:'huber',ini:'EH',name:'Elena Huber',mandate:'Defensive',val:'CHF 10.0M',fit:84,alert:'Opportunity: palm‑oil deforestation cut‑off',sev:'FYI',color:'#22c55e'},
+  {id:'ammann',ini:'AA',name:'Ammann',mandate:'Growth',val:'CHF 10.0M',fit:58,alert:'Reputation: labour scandal at held brand',sev:'Critical',color:'#ef4444'},
+  {id:'c5',ini:'MK',name:'M. Keller',mandate:'Balanced',val:'CHF 4.2M',fit:90,alert:'—',sev:'',color:'#22c55e'},
+  {id:'c6',ini:'PV',name:'P. Vogel',mandate:'Growth',val:'CHF 6.8M',fit:77,alert:'—',sev:'',color:'#f59e0b'}
+];
+
+const alerts=[
+  {id:'a1',icon:'💜',ttl:'Schneider — a moment that matters',sev:'Critical',sevc:'t-red',client:'Hubertus Schneider',due:'Today',age:'2 hours ago',
+   body:'A core pharma holding is winding down its neuroscience research — the field his family foundation funds. This is personal before it is financial.',
+   pri:'Open case',act:'schneider'},
+  {id:'a2',icon:'🛡',ttl:'Räber — guardrail triggered',sev:'Attention',sevc:'t-amber',client:'Räber Family',due:'This week',age:'Yesterday',
+   body:'CIO recommends rebalancing into US AI stocks — conflicts with his stated aversion to US tech. Draft a respectful alternative.',
+   pri:'Review',act:'raeber'},
+  {id:'a3',icon:'🤖',ttl:'Research ready — EM telecom replacement',sev:'Task',sevc:'t-blue',client:'Autonomous',due:'Done',age:'just now',
+   body:'Auto‑run research for the stale China Mobile SELL produced a cited brief with 3 same‑group BUY candidates.',
+   pri:'View brief',act:'research'}
+];
+
+function sevTag(s){const m={Critical:'t-red',Attention:'t-amber',FYI:'t-green',Task:'t-blue'};return `<span class="tag ${m[s]||'t-blue'}">${s}</span>`}
+
+function renderAlerts(){
+  document.getElementById('alerts').innerHTML=alerts.map(a=>`
+    <div class="alert" id="al-${a.id}">
+      <span class="x" onclick="dismiss('${a.id}')">✕</span>
+      <div class="atop">${sevTag(a.sev)}<span class="ttl">${a.icon} ${a.ttl}</span></div>
+      <div class="meta">👤 ${a.client} · ⏰ Due: ${a.due} · ${a.age}</div>
+      <div class="body">${a.body}</div>
+      <div class="acts"><button class="btn pri" onclick="loadCanvas('${a.act}')">${a.pri}</button><button class="btn ghost" onclick="dismiss('${a.id}')">Dismiss</button></div>
+    </div>`).join('');
+  const n=alerts.length;document.getElementById('acbadge').textContent=n;document.getElementById('bellc').textContent=n;
+}
+function dismiss(id){const i=alerts.findIndex(a=>a.id===id);if(i>-1)alerts.splice(i,1);renderAlerts();}
+function clearAlerts(){alerts.length=0;renderAlerts();}
+
+/* ---- canvas views ---- */
+function heatColor(v){ if(v>=80)return '#22c55e'; if(v>=65)return '#84cc16'; if(v>=50)return '#f59e0b'; return '#ef4444';}
+
+const views={
+  book:()=>`
+    <div class="note-banner">Personalization at scale — one fixed strategy, a different personalized portfolio per client. Sorted by lowest fit (needs attention first).</div>
+    <div class="w"><div class="wt"><b>📒 Book view — ${clients.length} clients</b><span class="src">source: portfolio + DNA engine</span></div>
+      ${[...clients].sort((a,b)=>a.fit-b.fit).map(c=>`
+        <div class="clientrow" style="padding:9px 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="loadCanvas('${c.id}')">
+          <div class="ava">${c.ini}</div>
+          <div style="flex:1">
+            <div><b>${c.name}</b> &nbsp;<span class="pill">${c.mandate}</span></div>
+            <div class="stat">${c.val} · top alert: ${c.alert}</div>
+          </div>
+          <div style="text-align:right;min-width:96px">
+            <div class="stat">fit <b style="color:${heatColor(c.fit)}">${c.fit}</b>/100</div>
+            <div class="bar"><i style="width:${c.fit}%;background:${heatColor(c.fit)}"></i></div>
+          </div>
+          ${c.sev?sevTag(c.sev):''}
+        </div>`).join('')}
+    </div>
+    <p class="legend">Fit = how well each holding matches the client's DNA, value‑weighted. Click a client to drill in.</p>`,
+
+  schneider:()=>`
+    <div class="note-banner">One event → two possible responses. The engine surfaces a <b>reach‑out</b> AND a <b>swap</b>; the RM decides.</div>
+    <div class="w"><div class="wt"><b>🧬 Client DNA — Hubertus Schneider</b><span class="src" title="from CRM notes 2026">source: CRM notes</span></div>
+      <div class="clientrow"><div class="ava">HS</div><div><b>Hubertus Schneider</b><div class="stat">Balanced mandate · CHF 9.99M · last contact: 4 days ago</div></div></div>
+      <ul class="dna">
+        <li>💎 <b>Value:</b> family foundation funding neurodegenerative (Parkinson's) research</li>
+        <li>🚫 <b>Red line:</b> divest any holding that abandons/defunds Parkinson's research</li>
+        <li>🏭 <b>Context:</b> Swiss automotive‑supply entrepreneur · values precision &amp; stability</li>
+        <li>🗣 <b>Style:</b> values‑led, emotional, purpose‑driven</li>
+      </ul>
+      <div class="quote">“If a company we own ever abandons or defunds Parkinson's research… flag them immediately for divestment.” — CRM note, 2026</div>
+    </div>
+    <div class="w" style="border-color:#7f1d1d"><div class="wt">${sevTag('Critical')}<b>💜 Moment that matters</b><span class="src">action: reach out</span></div>
+      <p style="margin:6px 0">This holding pivot hurts the cause his daughter's life depends on. The best first action is <b>human, not a trade</b>.</p>
+      <div class="acts"><button class="btn pri">📞 Call Hubertus</button><button class="btn">✍️ Draft message</button></div>
+      <div class="legend">🔗 why: DNA red‑line ↔ news event (pharma neuro wind‑down)</div>
+    </div>
+    <div class="w"><div class="wt"><b>🔁 Swap proposal — within strategy</b><span class="src" title="same Industry Group · CIO BUY">source: CIO list + engine</span></div>
+      <div class="swap">
+        <div class="swapbox out"><span class="badge2 t-red">SELL · conflict</span><div style="margin-top:6px"><b>Novartis AG</b></div><small>Health Care · winding down neuro research</small></div>
+        <div class="arr">→</div>
+        <div class="swapbox in"><span class="badge2 t-green">BUY · CIO ✓</span><div style="margin-top:6px"><b>Roche Holding AG</b></div><small>Health Care · sustained neuro/CNS pipeline</small></div>
+      </div>
+      <p class="stat" style="margin-top:10px">✔ Same Industry Group (Health Care) &nbsp; ✔ CIO BUY &nbsp; ✔ <b>risk‑neutral</b> — sub‑asset‑class weight unchanged &nbsp; ✔ fit +0.31</p>
+      <div class="acts" style="margin-top:6px"><button class="btn pri">Approve proposal</button><button class="btn ghost">Devil's advocate</button></div>
+    </div>
+    <div class="w"><div class="wt"><b>✉️ Tailored message</b>
+        <span class="toggle" style="margin-left:auto">
+          <button id="tg-v" class="on" onclick="setStyle('values')">Values‑led</button>
+          <button id="tg-d" onclick="setStyle('data')">Data‑driven</button>
+        </span></div>
+      <div class="draft" id="draft"></div>
+      <div class="prov" id="prov"></div>
+      <div class="acts" style="margin-top:10px"><button class="btn pri">Approve &amp; open in Outlook draft</button><button class="btn">Edit</button><span class="pill">channel: tone‑match — a call, then this note</span></div>
+    </div>`,
+
+  raeber:()=>`
+    <div class="note-banner">Behavioral guardrail — the AI flags when even the <b>CIO</b> recommendation conflicts with a client's stated red line.</div>
+    <div class="w"><div class="wt">${sevTag('Attention')}<b>🛡 Guardrail — Räber Family</b><span class="src">source: CIO list + DNA</span></div>
+      <p>CIO recommends rebalancing Foreign Developed equities into <b>US AI stocks</b> (NVIDIA, Microsoft). This conflicts with Räber's documented <b>aversion to US tech</b>.</p>
+      <div class="swap">
+        <div class="swapbox out"><span class="badge2 t-red">CIO suggestion · conflict</span><div style="margin-top:6px"><b>NVIDIA / Microsoft</b></div><small>Information Technology · USA</small></div>
+        <div class="arr">→</div>
+        <div class="swapbox in"><span class="badge2 t-green">Personalized · same group</span><div style="margin-top:6px"><b>ASML</b> / <b>TSMC</b></div><small>Information Technology · EU / EM — keeps the tech exposure, drops the US‑tech objection</small></div>
+      </div>
+      <p class="stat" style="margin-top:10px">The RM gets a respectful, pre‑drafted rationale to keep the tech sleeve while honouring his preference. <b>Nothing is executed</b> — his call.</p>
+      <div class="acts"><button class="btn pri">Open draft rationale</button><button class="btn ghost">Show CIO view</button></div>
+    </div>`,
+
+  research:()=>`
+    <div class="note-banner">Autonomous task — safe, read‑only research ran on its own and produced a <b>cited</b> brief. Outward actions still need the RM.</div>
+    <div class="w"><div class="wt">${sevTag('Task')}<b>🤖 Research brief — replace stale EM Telecom SELL</b><span class="src">auto‑run · read‑only</span></div>
+      <p class="stat">Trigger: China Mobile carries a CIO <b>SELL</b> (state‑control risk), unactioned 41 days. Task auto‑classified <b>Auto</b> → research routine ran.</p>
+      <ul class="clean">
+        <li><b>Finding:</b> 1 not‑held BUY candidate in the same Industry Group (Telecommunication): <b>Deutsche Telekom</b> — “European telecom quality; T‑Mobile US growth engine”. <span class="pill">CIO list</span></li>
+        <li><b>Risk‑neutral?</b> Yes — both EM/Foreign telecom equity; sub‑asset‑class weight preserved. <span class="pill">portfolio engine</span></li>
+        <li><b>Sentiment:</b> recent news neutral‑to‑positive (no governance flags). <span class="pill">Event Registry</span></li>
+        <li><b>Price check:</b> live EOD pulled for sizing. <span class="pill">SIX MCP</span></li>
+      </ul>
+      <div class="acts"><button class="btn pri">Promote to swap proposal</button><button class="btn">Assign to RM</button><button class="btn ghost">Discard</button></div>
+      <div class="legend">🔒 The agent gathered &amp; analysed only. It did not place any order — that remains the RM's decision.</div>
+    </div>`,
+
+  voice:()=>`
+    <div class="note-banner">Voice → CRM — the RM dictates after a meeting; the system structures a note, proposes DNA updates &amp; tasks, then writes back on approval.</div>
+    <div class="w"><div class="wt"><b>🎙 Dictation</b><span class="src">Web Speech → Phoeniqs</span></div>
+      <div class="draft">“Just had coffee with Hubertus. Chloe is responding a little better to the new treatment — he was emotional but hopeful. He wants to increase the foundation endowment next quarter and asked me to look into that Geneva neuro‑genetics lab again. Keep everything aligned with the cause.”</div>
+    </div>
+    <div class="w"><div class="wt"><b>📝 Structured note <span class="tag t-amber">draft — RM approves</span></b><span class="src">→ write‑back to CRM</span></div>
+      <ul class="clean">
+        <li><b>Date:</b> 2026‑06‑20 · <b>Medium:</b> In‑person · <b>Contact:</b> Hubertus Schneider</li>
+        <li><b>Summary:</b> Positive update on Chloe's treatment; intends to increase foundation endowment next quarter; requested follow‑up on the Geneva neuro‑genetics lab.</li>
+      </ul>
+      <h3 style="margin-bottom:4px">Proposed DNA updates</h3>
+      <ul class="clean"><li>🟢 Life event: daughter responding to new treatment (sentiment ↑)</li><li>💎 Reinforce value: foundation / neuro cause (strengthen tilt)</li></ul>
+      <h3 style="margin-bottom:4px">Proposed tasks</h3>
+      <ul class="clean"><li>📌 <b>Auto:</b> research Geneva neuro‑genetics lab &amp; related listed exposure</li><li>📌 <b>Manual:</b> prepare Q3 endowment‑increase paperwork</li></ul>
+      <div class="acts"><button class="btn pri">Approve → write to CRM</button><button class="btn">Edit</button></div>
+    </div>`
+};
+// aliases for client ids → views
+views.c5=views.book; views.c6=views.book; views.huber=()=>views.book(); views.ammann=()=>views.book();
+
+let curStyle='values';
+const drafts={
+  values:`Dear Hubertus,
+
+I was thinking of you and Chloe. I learned that one of our holdings is stepping back from the very Parkinson's research your foundation fights for — and I wanted you to hear it from me, personally, before anything else.
+
+Your wish was always that our capital fights on the frontlines alongside the scientists. So I'd like to move that position into a company still fully committed to neuroscience — keeping your strategy exactly as it is, simply pointing it at the fight that matters to your family.
+
+Whenever you're ready, I'm here.`,
+  data:`Dear Mr. Schneider,
+
+A core Health Care holding (Novartis) is winding down its neuroscience programme. Given your divestment red‑line on Parkinson's research, I recommend a same‑sector, CIO‑rated reallocation:
+
+• Sell: Novartis AG (Health Care)
+• Buy: Roche Holding AG (Health Care, CIO: BUY)
+• Mandate impact: none — sub‑asset‑class weight unchanged
+• Fit improvement: +0.31
+
+This preserves your Balanced strategy precisely. Shall we proceed?`
+};
+const provs={
+  values:['CRM note 2026 — red line','News: neuro wind‑down','CIO: Roche BUY'],
+  data:['Portfolio: Novartis pos.','CIO list: Roche BUY','Engine: risk‑neutral','Fit Δ +0.31']
+};
+function setStyle(s){curStyle=s;
+  document.getElementById('tg-v').classList.toggle('on',s==='values');
+  document.getElementById('tg-d').classList.toggle('on',s==='data');
+  paintDraft();
+}
+function paintDraft(){
+  const d=document.getElementById('draft'); if(!d)return;
+  d.textContent=drafts[curStyle];
+  document.getElementById('prov').innerHTML='🔗 provenance: '+provs[curStyle].map(p=>`<span>${p}</span>`).join('');
+}
+
+function loadCanvas(key){
+  const fn=views[key]||views.book;
+  document.getElementById('canvas').innerHTML=fn();
+  if(key==='schneider'){curStyle='values';paintDraft();}
+  document.querySelector('.canvas').scrollTop=0;
+}
+function runCmd(){
+  const v=document.getElementById('cmdin').value.toLowerCase();
+  if(v.includes('schne'))loadCanvas('schneider');
+  else if(v.includes('rae'))loadCanvas('raeber');
+  else if(v.includes('research'))loadCanvas('research');
+  else if(v.includes('note')||v.includes('voice'))loadCanvas('voice');
+  else loadCanvas('book');
+  document.getElementById('cmdin').value='';
+}
+
+/* init */
+renderAlerts();
+loadCanvas('book');
+</script>
+</body>
+</html>

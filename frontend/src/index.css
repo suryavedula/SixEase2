@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+/* ===========================================================================
+   Theme tokens (TASK-003, EPIC-01)
+   Palette ported from Project-Overview.html (proto view, mock lines 8–13).
+   The mock is dark-only; the light palette is derived (light surfaces, dark
+   text, same accent hues). Themes switch via [data-theme] on <html>, set by
+   src/theme/ThemeProvider.tsx and the pre-paint script in index.html.
+   ---------------------------------------------------------------------------
+   Pattern: raw values live in CSS custom properties per theme; Tailwind v4
+   @theme maps them to utilities (bg-panel, text-muted, border-border, …).
+   =========================================================================== */
+
+:root,
+[data-theme="dark"] {
+  --color-bg: #0b0f17;
+  --color-panel: #131a26;
+  --color-panel2: #1a2435;
+  --color-panel3: #212d42;
+  --color-border: #243044;
+  --color-text: #e6edf6;
+  --color-muted: #8a98ad;
+  --color-dim: #5b6b82;
+
+  --color-blue: #3b82f6;
+  --color-green: #22c55e;
+  --color-red: #ef4444;
+  --color-amber: #f59e0b;
+  --color-purple: #8b5cf6;
+  --color-teal: #14b8a6;
+
+  --shadow-panel: 0 8px 30px rgba(0, 0, 0, 0.35);
+  --header-bg: rgba(11, 15, 23, 0.86);
+}
+
+[data-theme="light"] {
+  --color-bg: #f3f6fb;
+  --color-panel: #ffffff;
+  --color-panel2: #eef2f8;
+  --color-panel3: #e2e8f2;
+  --color-border: #d6deea;
+  --color-text: #0f1722;
+  --color-muted: #56657c;
+  --color-dim: #8895a9;
+
+  --color-blue: #2563eb;
+  --color-green: #16a34a;
+  --color-red: #dc2626;
+  --color-amber: #d97706;
+  --color-purple: #7c3aed;
+  --color-teal: #0d9488;
+
+  --shadow-panel: 0 8px 24px rgba(15, 23, 34, 0.08);
+  --header-bg: rgba(243, 246, 251, 0.86);
+}
+
+/* Expose the CSS variables to Tailwind as theme utilities. */
+@theme inline {
+  --color-bg: var(--color-bg);
+  --color-panel: var(--color-panel);
+  --color-panel2: var(--color-panel2);
+  --color-panel3: var(--color-panel3);
+  --color-border: var(--color-border);
+  --color-text: var(--color-text);
+  --color-muted: var(--color-muted);
+  --color-dim: var(--color-dim);
+
+  --color-blue: var(--color-blue);
+  --color-green: var(--color-green);
+  --color-red: var(--color-red);
+  --color-amber: var(--color-amber);
+  --color-purple: var(--color-purple);
+  --color-teal: var(--color-teal);
+
+  --radius-card: 14px;
+
+  --shadow-panel: var(--shadow-panel);
+
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
+  --font-mono: ui-monospace, Menlo, Monaco, "Cascadia Code", monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  /* Subtle radial wash, matching the mock's body background. */
+  background-image: radial-gradient(
+    1200px 600px at 80% -10%,
+    color-mix(in srgb, var(--color-blue) 10%, transparent),
+    transparent 60%
+  );
+  /* Smooth the theme switch. */
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}

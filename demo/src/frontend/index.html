@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Stock Analysis POC</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; }
+      .app { max-width: 960px; margin: 0 auto; padding: 24px; }
+      header { text-align: center; margin-bottom: 32px; }
+      header h1 { font-size: 1.75rem; color: #38bdf8; }
+      header p { color: #94a3b8; margin-top: 4px; }
+      .controls { display: flex; gap: 8px; margin-bottom: 24px; }
+      .controls input { flex: 1; padding: 10px 14px; border: 1px solid #334155; border-radius: 6px; background: #1e293b; color: #e2e8f0; font-size: 1rem; }
+      .controls button { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.9rem; font-weight: 600; }
+      .btn-primary { background: #2563eb; color: #fff; }
+      .btn-secondary { background: #334155; color: #e2e8f0; }
+      .btn-primary:disabled, .btn-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+      .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+      .card h2 { font-size: 1.25rem; margin-bottom: 12px; color: #38bdf8; }
+      .card h3 { font-size: 1rem; margin-bottom: 8px; color: #38bdf8; }
+      .price { font-size: 2rem; font-weight: 700; }
+      .positive { color: #4ade80; }
+      .negative { color: #f87171; }
+      .neutral { color: #fbbf24; }
+      .badge { display: inline-block; padding: 2px 10px; border-radius: 9999px; font-size: 0.8rem; font-weight: 600; }
+      .badge-bullish { background: #166534; color: #4ade80; }
+      .badge-bearish { background: #991b1b; color: #f87171; }
+      .badge-neutral { background: #854d0e; color: #fbbf24; }
+      .news-item { padding: 12px 0; border-bottom: 1px solid #334155; }
+      .news-item:last-child { border-bottom: none; }
+      .news-item h4 { margin-bottom: 4px; }
+      .news-item p { color: #94a3b8; font-size: 0.9rem; }
+      .news-item small { color: #64748b; }
+      .rec-box { padding: 16px; border-radius: 8px; text-align: center; }
+      .rec-buy { background: #166534; }
+      .rec-hold { background: #854d0e; }
+      .rec-sell { background: #991b1b; }
+      .rec-action { font-size: 2rem; font-weight: 800; }
+      .loading { text-align: center; padding: 40px; color: #94a3b8; }
+      .probe { border: 1px solid #334155; border-radius: 8px; padding: 14px; margin-bottom: 14px; }
+      .probe-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+      .probe-head .name { font-weight: 700; color: #e2e8f0; }
+      .probe-head .meta { color: #64748b; font-size: 0.8rem; margin-left: auto; }
+      .probe-label { font-size: 0.7rem; letter-spacing: 0.08em; text-transform: uppercase; color: #94a3b8; margin: 10px 0 4px; }
+      .probe pre { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px 12px; overflow-x: auto; font-family: 'SF Mono', Menlo, Consolas, monospace; font-size: 0.78rem; line-height: 1.45; color: #cbd5e1; white-space: pre-wrap; word-break: break-word; }
+      .probe pre.err { border-color: #991b1b; color: #fca5a5; }
+      .probe pre.resp-ok { border-color: #166534; }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header>
+        <h1>Stock Analysis POC</h1>
+        <p>Phoeniqs LLM + SIX MCP + Event Registry Integration</p>
+      </header>
+
+      <div class="controls">
+        <input type="text" id="symbolInput" placeholder="Enter symbol or name (e.g. TSLA, Nestle)" value="Apple" />
+        <button class="btn-primary" id="analyzeBtn">Analyze</button>
+        <button class="btn-secondary" id="statusBtn">Check Integrations</button>
+      </div>
+
+      <div id="status"></div>
+      <div id="results"></div>
+    </div>
+
+    <script>
+      var API_BASE = window.location.origin + '/api/analysis';
+
+      function sentimentClass(label) {
+        return label === 'BULLISH' ? 'positive' : label === 'BEARISH' ? 'negative' : 'neutral';
+      }
+
+      function badgeClass(label) {
+        return label === 'BULLISH' ? 'badge-bullish' : label === 'BEARISH' ? 'badge-bearish' : 'badge-neutral';
+      }
+
+      function recClass(rec) {
+        return rec === 'BUY' ? 'rec-buy' : rec === 'SELL' ? 'rec-sell' : 'rec-hold';
+      }
+
+      function renderResults(data) {
+        var s = data.stock;
+        var sent = data.sentiment;
+        var rec = data.recommendation;
+        var news = data.news || [];
+
+        var changeClass = s.change >= 0 ? 'positive' : 'negative';
+        var changeSign = s.change >= 0 ? '+' : '';
+
+        document.getElementById('results').innerHTML =
+          '<div class="card">' +
+            '<h2>' + s.symbol + ' - ' + s.name + '</h2>' +
+            '<div class="price ' + changeClass + '">$' + s.currentPrice.toFixed(2) + '</div>' +
+            '<div class="' + changeClass + '">' + changeSign + s.change.toFixed(2) + ' (' + changeSign + s.changePercent.toFixed(2) + '%)</div>' +
+          '</div>' +
+          '<div class="card">' +
+            '<h3>News Sentiment</h3>' +
+            '<p>Score: <span class="' + sentimentClass(sent.label) + '">' + sent.score.toFixed(2) + '</span></p>' +
+            '<p>Label: <span class="badge ' + badgeClass(sent.label) + '">' + sent.label + '</span></p>' +
+            '<p>Confidence: ' + (sent.confidence * 100).toFixed(0) + '%</p>' +
+          '</div>' +
+          '<div class="card">' +
+            '<h3>Portfolio Recommendation</h3>' +
+            '<div class="rec-box ' + recClass(rec.recommendation) + '">' +
+              '<div class="rec-action">' + rec.suggestedAction + '</div>' +
+              '<div>' + rec.recommendation + ' &middot; ' + (rec.confidence * 100).toFixed(0) + '% confidence</div>' +
+            '</div>' +
+            '<p style="margin-top:12px">' + rec.reasoning + '</p>' +
+            (typeof rec.targetPrice === 'number' ? '<p>Target: $' + rec.targetPrice.toFixed(2) + (typeof rec.stopLoss === 'number' ? ' | Stop Loss: $' + rec.stopLoss.toFixed(2) : '') + '</p>' : '') +
+          '</div>' +
+          '<div class="card">' +
+            '<h3>Latest News</h3>' +
+            news.map(function(n) {
+              return '<div class="news-item">' +
+                '<h4>' + n.title + '</h4>' +
+                '<p>' + n.summary + '</p>' +
+                '<small>' + n.source + ' &middot; <span class="badge ' + badgeClass(n.sentiment.label) + '">' + n.sentiment.label + ' (' + n.sentiment.score.toFixed(2) + ')</span></small>' +
+              '</div>';
+            }).join('') +
+          '</div>';
+      }
+
+      function analyzeStock() {
+        var symbol = document.getElementById('symbolInput').value.trim();
+        if (!symbol) return;
+
+        document.getElementById('results').innerHTML = '<div class="loading">Analyzing...</div>';
+        document.getElementById('analyzeBtn').disabled = true;
+
+        fetch(API_BASE + '/analyze', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ symbol: symbol }),
+        })
+        .then(function(res) { return res.json(); })
+        .then(function(json) {
+          if (json.success) renderResults(json.data);
+          else document.getElementById('results').innerHTML = '<div class="card"><p>Error: ' + json.error + '</p></div>';
+        })
+        .catch(function(e) {
+          document.getElementById('results').innerHTML = '<div class="card"><p>Request failed.</p></div>';
+        })
+        .finally(function() {
+          document.getElementById('analyzeBtn').disabled = false;
+        });
+      }
+
+      function esc(s) {
+        return String(s).replace(/[&<>]/g, function(c) {
+          return c === '&' ? '&amp;' : c === '<' ? '&lt;' : '&gt;';
+        });
+      }
+
+      function renderRequest(req) {
+        var lines = [req.method + ' ' + req.url];
+        if (req.headers) {
+          Object.keys(req.headers).forEach(function(k) {
+            lines.push(k + ': ' + req.headers[k]);
+          });
+        }
+        if (req.body !== undefined) {
+          lines.push('');
+          lines.push(JSON.stringify(req.body, null, 2));
+        }
+        return lines.join('\n');
+      }
+
+      function renderProbe(p) {
+        var dot = p.ok ? '🟢' : (p.configured ? '🟡' : '⚪');
+        var state = p.ok ? 'OK' : (p.configured ? 'FAILED' : 'NOT CONFIGURED');
+
+        var html = '<div class="probe">' +
+          '<div class="probe-head">' +
+            '<span>' + dot + '</span>' +
+            '<span class="name">' + esc(p.name) + '</span>' +
+            '<span>— ' + state + '</span>' +
+            '<span class="meta">' + p.durationMs + ' ms</span>' +
+          '</div>' +
+          '<div class="probe-label">Request</div>' +
+          '<pre>' + esc(renderRequest(p.request)) + '</pre>';
+
+        if (p.response) {
+          var statusLine = p.response.status !== undefined ? 'HTTP ' + p.response.status + '\n\n' : '';
+          html += '<div class="probe-label">Response</div>' +
+            '<pre class="' + (p.ok ? 'resp-ok' : '') + '">' + esc(statusLine + p.response.body) + '</pre>';
+        }
+        if (p.error) {
+          html += '<div class="probe-label">Error</div>' +
+            '<pre class="err">' + esc(p.error) + '</pre>';
+        }
+        return html + '</div>';
+      }
+
+      function checkIntegrations() {
+        var statusEl = document.getElementById('status');
+        statusEl.innerHTML = '<div class="loading">Pinging SIX MCP, Event Registry, and Phoeniqs...</div>';
+        document.getElementById('statusBtn').disabled = true;
+
+        fetch(API_BASE + '/integrations')
+        .then(function(res) { return res.json(); })
+        .then(function(json) {
+          if (!json.success) { statusEl.innerHTML = '<div class="card"><p>Error: ' + esc(json.error) + '</p></div>'; return; }
+          var probes = json.data.probes || [];
+          statusEl.innerHTML = '<div class="card"><h3>Integration Status</h3>' +
+            probes.map(renderProbe).join('') + '</div>';
+        })
+        .catch(function() { statusEl.innerHTML = '<div class="card"><p>Status request failed.</p></div>'; })
+        .finally(function() { document.getElementById('statusBtn').disabled = false; });
+      }
+
+      document.getElementById('analyzeBtn').addEventListener('click', analyzeStock);
+      document.getElementById('statusBtn').addEventListener('click', checkIntegrations);
+      document.getElementById('symbolInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') analyzeStock();
+      });
+    </script>
+  </body>
+</html>
