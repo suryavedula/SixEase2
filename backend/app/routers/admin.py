@@ -55,6 +55,7 @@ from app.loaders.price_watch import scan_price_signals
 from app.loaders.alerts import generate_alerts
 from app.loaders.alert_rank import rank_alerts
 from app.loaders.change_radar import build_change_radar
+from app.loaders.demo_email import ensure_demo_scenario, reset_demo
 from app.loaders.email_ingest import ingest_email_signals
 from app.loaders.fact_sheet import assemble_fact_sheet
 from app.loaders.message_render import render_message_draft
@@ -412,6 +413,31 @@ async def ingest_email(session: AsyncSession = Depends(get_session)) -> dict:
         log.error("admin.ingest_email_failed", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"status": "ok", "signals": len(email_signals), "loaded": counts}
+
+
+@router.post("/seed/demo/divorce")
+async def seed_demo_divorce(session: AsyncSession = Depends(get_session)) -> dict:
+    """Pre-bake the "overnight email → prepared answer" demo beat (pitch only).
+
+    Writes the pinned Change Radar event (source="email") + the prepared reply
+    (MessageDraft) + a DONE Task(source="email") for DEMO_EMAIL_CLIENT, directly —
+    no live inbox fetch or LLM. The radar event survives the refresh loop (its
+    "email:demo:%" key is preserved by build_change_radar). Idempotent.
+    """
+    try:
+        result = await ensure_demo_scenario(session)
+    except Exception as exc:
+        log.error("admin.seed_demo_divorce_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    if not result.get("created"):
+        raise HTTPException(status_code=404, detail=result.get("reason", "could not seed demo"))
+    return {"status": "ok", **result}
+
+
+@router.post("/seed/demo/divorce/reset")
+async def seed_demo_divorce_reset(session: AsyncSession = Depends(get_session)) -> dict:
+    """Remove the demo task + draft and clear the marker (rehearsal reset)."""
+    return await reset_demo(session)
 
 
 @router.post("/seed/news")

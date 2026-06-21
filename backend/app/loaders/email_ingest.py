@@ -29,7 +29,7 @@ import difflib
 import re
 from datetime import datetime, timezone
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -62,7 +62,8 @@ _NONALNUM = re.compile(r"[^a-z0-9]+")
 
 
 class _EmailEntity(BaseModel):
-    kind: str  # "instrument" | "client" | "book"
+    # Accept "type" as an alias — small local models often emit it instead of "kind".
+    kind: str = Field(validation_alias=AliasChoices("kind", "type"))  # instrument|client|book
     name: str | None = None  # instrument/issuer name or ticker, client name, mandate, or null
     isin: str | None = None  # only if the email literally states an ISIN
 
@@ -325,8 +326,13 @@ async def _signals_for_email(
 
         elif kind == "book":
             mandate = _mandate_from_text(entity.name)
-            targets = [c for c in clients if mandate is None or c.mandate == mandate]
-            key = f"email:book:{mandate.value if mandate else 'all'}"
+            if mandate is None:
+                # A vague "book" reference (e.g. "global mandate") would fan out to
+                # every client with zero real exposure — pure radar noise. Skip it;
+                # only act on a concrete mandate (Defensive/Balanced/Growth).
+                continue
+            targets = [c for c in clients if c.mandate == mandate]
+            key = f"email:book:{mandate.value}"
             mag = email_magnitude(cls.urgency, cls.sentiment, outbound=False)
             for c in targets:
                 out.append(
@@ -346,23 +352,14 @@ async def _signals_for_email(
                 )
 
     if not out:
-        # No-fallbacks: nothing resolved → surface explicitly, never drop. The radar's
-        # zero-exposure path writes a ChangeEvent with an unresolved_reason.
-        sender = msg.from_address or msg.from_name or "unknown sender"
-        out.append(
-            RadarSignal(
-                entity_key=f"email:unresolved:{msg.conversation_id or msg.id}",
-                entity_type="macro",
-                entity_label=f"Unresolved email: {msg.subject or '(no subject)'}",
-                action=cls.action,
-                source="email",
-                client_id=f"unmatched:{sender}",
-                magnitude=email_magnitude(cls.urgency, cls.sentiment, outbound=outbound),
-                dna_relevance=1.0,
-                event_ts=ts,
-                dna_note=f"Could not resolve entity/identity for email from {sender}",
-                suggested_action="Review unmatched email manually",
-            )
+        # A real RM mailbox is full of mail that isn't client correspondence
+        # (newsletters, invites, bounces). Surfacing each as a zero-exposure radar
+        # item is pure noise, so we drop it — only emails that resolve to a known
+        # client or a held instrument reach the radar. Logged, not silently lost.
+        log.info(
+            "email_ingest.unresolved_skipped",
+            subject=(msg.subject or "")[:80],
+            sender=msg.from_address or msg.from_name,
         )
     return out
 
@@ -415,10 +412,14 @@ async def ingest_email_signals(session: AsyncSession) -> list[RadarSignal]:
     signals: list[RadarSignal] = []
     drafted = 0
     for rep in reps:
-        cls = await _classify_email(rep)
-        email_signals = await _signals_for_email(
-            rep, cls, mailbox, clients, positions, cio, contacts
-        )
+        try:
+            cls = await _classify_email(rep)
+            email_signals = await _signals_for_email(
+                rep, cls, mailbox, clients, positions, cio, contacts
+            )
+        except Exception as exc:  # noqa: BLE001 — one odd email must not nuke the radar
+            log.warning("email_ingest.classify_skip", message_id=rep.id, error=str(exc))
+            continue
         signals += email_signals
 
         # Part A: pre-draft the answer for genuinely NEW inbound mail (draft only, G1).

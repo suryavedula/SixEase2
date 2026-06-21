@@ -218,6 +218,13 @@ class Settings(BaseSettings):
     # Cap drafts produced per refresh cycle (LLM-budget guard against an inbox flood).
     email_autodraft_max_per_cycle: int = Field(default=3)
 
+    # --- Demo scenario (pitch only) ------------------------------------------
+    # Pre-bakes the "overnight client email → prepared answer" beat (Change Radar
+    # item + DONE task + drafted reply) without a live inbox or sign-in. Anchored
+    # to DEMO_EMAIL_CLIENT (persona name). Leave disabled outside the demo.
+    demo_email_enabled: bool = Field(default=False)
+    demo_email_client: str = Field(default="Julian Ammann")
+
     # --- News = Event Registry / newsapi.ai (REST) — TASK-006 / used by 014 -
     newsapi_key: str = Field(default="")
     newsai_api_url: str = Field(default="https://eventregistry.org/api/v1")

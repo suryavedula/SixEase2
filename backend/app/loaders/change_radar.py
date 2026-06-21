@@ -199,7 +199,15 @@ async def build_change_radar(
     now = datetime.now(timezone.utc)
 
     # Idempotency: full rebuild — the radar is a pure projection of live signals.
-    await session.execute(delete(ChangeEvent))
+    # Demo events (entity_key "email:demo:%") are pinned: written directly by
+    # loaders/demo_email.py and preserved across rebuilds so the pitch scenario
+    # survives the refresh loop.
+    await session.execute(
+        delete(ChangeEvent).where(
+            (ChangeEvent.entity_key.is_(None))
+            | (ChangeEvent.entity_key.notlike("email:demo:%"))
+        )
+    )
 
     # --- Preload exposure/context tables once (book is small: 4 personas) ---
     clients = (await session.execute(select(Client))).scalars().all()
