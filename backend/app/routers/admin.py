@@ -23,6 +23,8 @@ Endpoints added by task:
   TASK-031: POST /admin/seed/news       — 4 seeded persona trigger articles (offline demo)
   TASK-032: POST /admin/seed/alerts     — all-signals alert generation (8 non-drift classes)
   TASK-034: POST /admin/seed/rank       — rank_score computation for all open alerts (AL6)
+  TASK-059: POST /admin/seed/radar      — book-wide Change Radar (event-inversion + impact)
+  TASK-060: POST /admin/ingest/email    — Microsoft Graph email → radar signals (folds into radar)
   TASK-037: POST /admin/assemble/fact-sheet — deterministic MSG2 fact sheet → MessageDraft
   TASK-038: POST /admin/render/message      — MSG3 LLM render + MSG4 guardrail
   TASK-055: POST /admin/seed/personas       — full end-to-end pipeline for 4 real personas
@@ -37,7 +39,7 @@ from app.config import get_settings
 from app.db import get_session
 from app.loaders.crm import load_crm
 from app.loaders.news_fanout import run_fanout
-from app.loaders.news_match import scan_news_all_clients
+from app.loaders.news_match import fanout_seeded_news, scan_news_all_clients
 from app.loaders.holdings import enrich_holdings
 from app.loaders.watchlist import build_watchlists
 from app.loaders.drift import compute_drift
@@ -49,12 +51,17 @@ from app.loaders.embeddings import seed_dna_embeddings, seed_interaction_embeddi
 from app.loaders.portfolio import load_portfolio
 from app.loaders.synthetic import load_synthetic_clients
 from app.loaders.news_seed import seed_news_triggers
+from app.loaders.price_watch import scan_price_signals
 from app.loaders.alerts import generate_alerts
 from app.loaders.alert_rank import rank_alerts
+from app.loaders.change_radar import build_change_radar
+from app.loaders.email_ingest import ingest_email_signals
 from app.loaders.fact_sheet import assemble_fact_sheet
 from app.loaders.message_render import render_message_draft
 from app.loaders.personas import seed_personas
+from app.loaders.persona_portfolio import link_persona_portfolios
 from app.loaders.tags import load_tags
+from app.llm import budget_status
 from app.logging import get_logger
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -179,6 +186,40 @@ async def seed_fit(session: AsyncSession = Depends(get_session)) -> dict:
     return {"status": "ok", "loaded": counts}
 
 
+@router.post("/seed/persona-portfolios")
+async def seed_persona_portfolios(session: AsyncSession = Depends(get_session)) -> dict:
+    """Attach real portfolios to the four CRM personas, then recompute derived data.
+
+    Copies each persona's mandate-matching Sample portfolio onto them as owned
+    positions (no fallback), then runs the non-LLM derived pipeline against the
+    persona's OWN DNA: fit → swap → drift → alerts → rank. Requires /seed/portfolio,
+    /seed/crm and /seed/dna to have run first. Idempotent.
+    """
+    try:
+        link = await link_persona_portfolios(session)
+        fit = await compute_fit(session)
+        swap = await compute_swaps(session)
+        drift = await compute_drift(session)
+        alerts = await generate_alerts(session)
+        rank = await rank_alerts(session)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except Exception as exc:
+        log.error("admin.seed_persona_portfolios_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {
+        "status": "ok",
+        "loaded": {
+            "link": link,
+            "fit": fit,
+            "swap": swap,
+            "drift": drift,
+            "alerts": alerts,
+            "rank": rank,
+        },
+    }
+
+
 @router.post("/seed/swap")
 async def seed_swap(session: AsyncSession = Depends(get_session)) -> dict:
     """Compute DNA-conflict swap candidates for all clients (swap_proposals table).
@@ -247,6 +288,17 @@ async def seed_watchlist(session: AsyncSession = Depends(get_session)) -> dict:
     return {"status": "ok", "loaded": counts}
 
 
+@router.get("/budget")
+async def get_budget() -> dict:
+    """Hosted-LLM token budget readout for the active provider's current UTC day.
+
+    Returns spent / cap / remaining / exhausted. Local Ollama is unmetered
+    (`metered: false`). Surfaces the budget guard so exhaustion is explicit, never
+    silently degraded (no-fallbacks rule).
+    """
+    return {"status": "ok", "budget": await budget_status()}
+
+
 @router.post("/scan/news")
 async def scan_news(session: AsyncSession = Depends(get_session)) -> dict:
     """Fetch live news for all clients and match to their watchlists (TASK-028).
@@ -279,6 +331,22 @@ async def fanout_news(session: AsyncSession = Depends(get_session)) -> dict:
     return {"status": "ok", "result": result}
 
 
+@router.post("/scan/prices")
+async def scan_prices(session: AsyncSession = Depends(get_session)) -> dict:
+    """Scan held instruments via SIX → price_move / maturity_soon alerts (EPIC-08).
+
+    The free (non-token-metered) proactive axis; runs continuously via the
+    price-watch loop, exposed here for on-demand/demo use. Requires SIX_MCP_TOKEN
+    and a seeded portfolio. Idempotent per client.
+    """
+    try:
+        counts = await scan_price_signals(session)
+    except Exception as exc:
+        log.error("admin.scan_prices_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"status": "ok", "loaded": counts}
+
+
 @router.post("/seed/drift")
 async def seed_drift(session: AsyncSession = Depends(get_session)) -> dict:
     """Compute drift breach and stale-SELL alerts for all clients (TASK-022).
@@ -309,20 +377,60 @@ async def seed_rank(session: AsyncSession = Depends(get_session)) -> dict:
     return {"status": "ok", "loaded": counts}
 
 
+@router.post("/seed/radar")
+async def seed_radar(session: AsyncSession = Depends(get_session)) -> dict:
+    """Rebuild the book-wide Change Radar (TASK-059 / EPIC-08).
+
+    Inverts current Alert + NewsItem signals into event-centric change_events with
+    impacted-client fan-out and aggregate impact scoring. Also folds in live email
+    signals (TASK-060) so a single radar build sees every channel. Run AFTER
+    seed/alerts, seed/drift, and scan/news so all signals exist. Idempotent — full
+    rebuild. Email signals are empty when MS_GRAPH_* is unset (no crash).
+    """
+    try:
+        email_signals = await ingest_email_signals(session)
+        counts = await build_change_radar(session, extra_signals=email_signals)
+    except Exception as exc:
+        log.error("admin.seed_radar_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"status": "ok", "loaded": {**counts, "email_signals": len(email_signals)}}
+
+
+@router.post("/ingest/email")
+async def ingest_email(session: AsyncSession = Depends(get_session)) -> dict:
+    """Pull recent mail from Microsoft Graph and rebuild the radar with it (TASK-060).
+
+    Classifies each thread with the local LLM, resolves its instrument/client/book
+    entity, and folds the resulting signals into a full Change Radar rebuild. Returns
+    a no-op {signals: 0} when MS_GRAPH_* is unset; raises 500 when Graph is configured
+    but unreachable (no-fallbacks). Requires the radar's upstream signals to exist.
+    """
+    try:
+        email_signals = await ingest_email_signals(session)
+        counts = await build_change_radar(session, extra_signals=email_signals)
+    except Exception as exc:
+        log.error("admin.ingest_email_failed", error=str(exc))
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return {"status": "ok", "signals": len(email_signals), "loaded": counts}
+
+
 @router.post("/seed/news")
 async def seed_news(session: AsyncSession = Depends(get_session)) -> dict:
     """Seed the four demo persona trigger articles (TASK-031).
 
     Inserts scripted articles for Schneider, Huber, Räber, and Ammann so the
-    demo works offline without live Event Registry coverage (§14.4, G6).
-    Idempotent by event_cluster_id. Seeding order: seed/dna → seed/news.
+    demo works offline without live Event Registry coverage (§14.4, G6), then fans
+    each out to every holder of the instruments it names so the radar shows them as
+    multi-client events. Idempotent by event_cluster_id. Requires /seed/portfolio.
+    Seeding order: seed/dna → seed/news.
     """
     try:
         counts = await seed_news_triggers(session)
+        fanout = await fanout_seeded_news(session)
     except Exception as exc:
         log.error("admin.seed_news_failed", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-    return {"status": "ok", "loaded": counts}
+    return {"status": "ok", "loaded": {**counts, "fanout": fanout}}
 
 
 @router.post("/seed/alerts")
@@ -393,6 +501,7 @@ async def render_message_ep(
         log.error("admin.render_message_failed", error=str(exc))
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     return {"status": "ok", "loaded": result}
+
 
 
 @router.post("/seed/personas")

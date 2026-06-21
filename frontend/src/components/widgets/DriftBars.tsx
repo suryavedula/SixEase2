@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { AlertTriangle, Check } from "lucide-react";
 import { getPortfolioAllocation } from "../../api/portfolio";
 import type { AllocationResponse, SACRow } from "../../api/portfolio";
 
@@ -27,10 +28,13 @@ function DriftBar({ row, maxDrift }: { row: SACRow; maxDrift: number }) {
             {row.current_pct.toFixed(1)}% / {row.target_pct.toFixed(1)}%
           </span>
           <span
-            className={`text-[11px] font-mono font-semibold ${
+            className={`inline-flex items-center gap-1 text-[11px] font-mono font-semibold ${
               row.breach ? "text-red" : "text-green"
             }`}
           >
+            {row.breach && (
+              <AlertTriangle className="h-3 w-3" aria-label="drift breach" />
+            )}
             {row.drift_pp > 0 ? "+" : ""}
             {row.drift_pp.toFixed(1)}pp
           </span>
@@ -89,7 +93,7 @@ export function DriftBars({ clientId }: DriftBarsProps) {
 
   if (status.kind === "loading") {
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 space-y-3">
+      <div className="rounded-2xl border border-border bg-panel p-4 space-y-3">
         <div className="h-5 w-32 animate-pulse rounded bg-panel3" />
         {[1, 2, 3, 4, 5].map((i) => (
           <div key={i} className="h-6 w-full animate-pulse rounded bg-panel3" />
@@ -100,7 +104,7 @@ export function DriftBars({ clientId }: DriftBarsProps) {
 
   if (status.kind === "error") {
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 text-[13px]">
+      <div className="rounded-2xl border border-border bg-panel p-4 text-[13px]">
         <p className="text-muted">Could not load allocation data.</p>
         <p className="mt-1 text-dim text-[11px]">{status.message}</p>
       </div>
@@ -112,17 +116,19 @@ export function DriftBars({ clientId }: DriftBarsProps) {
   const maxDrift = Math.max(...data.sac_rows.map((r) => Math.abs(r.drift_pp)), DRIFT_THRESHOLD);
 
   return (
-    <div className="rounded-[14px] border border-border bg-panel p-4">
+    <div className="rounded-2xl border border-border bg-panel p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="font-semibold text-[15px] text-text">Drift vs Mandate</span>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-dim">±2pp band</span>
           {breachCount > 0 ? (
-            <span className="rounded border border-red/20 bg-red/10 px-2 py-0.5 text-[11px] font-semibold text-red">
+            <span className="inline-flex items-center gap-1 rounded border border-red/20 bg-red/10 px-2 py-0.5 text-[11px] font-semibold text-red">
+              <AlertTriangle className="h-3 w-3" />
               {breachCount} breach{breachCount !== 1 ? "es" : ""}
             </span>
           ) : (
-            <span className="rounded border border-green/20 bg-green/10 px-2 py-0.5 text-[11px] font-semibold text-green">
+            <span className="inline-flex items-center gap-1 rounded border border-green/20 bg-green/10 px-2 py-0.5 text-[11px] font-semibold text-green">
+              <Check className="h-3 w-3" />
               All in band
             </span>
           )}
@@ -131,8 +137,7 @@ export function DriftBars({ clientId }: DriftBarsProps) {
 
       {data.sac_rows.length === 0 ? (
         <p className="text-[13px] text-muted">
-          No allocation data. Run{" "}
-          <code className="font-mono text-dim">POST /admin/seed/portfolio</code> first.
+          No allocation data for this client yet.
         </p>
       ) : (
         <div>

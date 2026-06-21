@@ -1,3 +1,4 @@
+import { Moon, Sun } from "lucide-react";
 import { useTheme } from "../../theme/ThemeProvider";
 
 // Dark/light theme toggle (TASK-003, AC #2). Sun/moon glyph reflects the
@@ -13,7 +14,11 @@ export function ThemeToggle() {
       aria-label={`Switch to ${next} theme`}
       className="flex h-9 w-9 items-center justify-center rounded-[10px] border border-border bg-panel2 text-text transition-colors hover:border-blue"
     >
-      {theme === "dark" ? "☀️" : "🌙"}
+      {theme === "dark" ? (
+        <Sun size={18} strokeWidth={1.75} />
+      ) : (
+        <Moon size={18} strokeWidth={1.75} />
+      )}
     </button>
   );
 }

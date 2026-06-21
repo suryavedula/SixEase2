@@ -513,8 +513,12 @@ recommendation because it is given only a fixed fact sheet and told to use nothi
 - **MSG10 — Language.** English for the demo; German + formal address (Sie/Du, UC-19) is
   roadmap.
 - **Roadmap (parked):** two-way Microsoft Graph / Outlook integration — send-from-RM with
-  archiving, and inbound email ingested as a DNA/relationship signal (feeds UC-1, UC-8,
-  UC-21). The product SHALL NOT auto-send email to clients even then.
+  archiving. The product SHALL NOT auto-send email to clients even then.
+- **Implemented (TASK-060):** **inbound** email ingestion via Microsoft Graph (read-only
+  `Mail.Read`) is now a Change-Radar signal source. Each thread is classified by the local LLM
+  into an instrument / client / book entity and fanned out by exposure exactly like a news or
+  drift signal (§15). It is **read-only and optional** — disabled (a no-op) unless `MS_GRAPH_*`
+  is configured. Outbound auto-send remains prohibited (G1/G7). See the §20 Azure exception.
 
 ## 17. UI & interaction model
 
@@ -679,6 +683,14 @@ traceability G2/G3, strategy preserved G4, CRM-companion G7):
 **No Azure / no cloud dependency.** Everything runs locally and is self-hostable, packaged
 with Docker Compose. (Overrides the Azure-shared-services path in the challenge's reference
 diagrams.)
+
+> **Scoped exception — Azure as email *transport* only (TASK-060).** Inbound email ingestion
+> uses Microsoft Graph (Azure AD app registration, `Mail.Read`, client-credentials flow) purely
+> as a **read-only email transport**, never as infrastructure. It is **optional and degrades to a
+> no-op** when `MS_GRAPH_*` is unset, so the core stack stays fully local/self-hostable; no
+> compute, LLM, storage, or database moves to Azure, and no email is ever auto-sent (G1/G7). This
+> is the *only* Azure dependency in the product, and it is not required to run or demo the
+> offline persona pipeline.
 
 | Layer | Choice |
 |---|---|

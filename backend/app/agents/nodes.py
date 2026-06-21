@@ -24,8 +24,8 @@ from app.loaders.message_render import render_message_draft
 from app.loaders.task_classify import assert_auto_eligible
 from app.logging import get_logger
 from app.models.derived import ClientDNA
-from app.models.enums import TaskKind
-from app.models.source import Interaction
+from app.models.enums import CIORating, TaskKind
+from app.models.source import CIORecommendation, Interaction
 from app.news import search_articles
 from app.agents.state import AgentState
 
@@ -97,13 +97,21 @@ async def route_intent(state: AgentState) -> AgentState:
 # crm_agent — RESEARCH / ANALYSIS
 # ---------------------------------------------------------------------------
 
+class _RecOut(BaseModel):
+    index: int  # row number in the provided candidate list (anti-fabrication anchor)
+    reason: str  # why this instrument fits the request + client DNA
+
+
 class _BriefOut(BaseModel):
     summary: str
     citations: list[str]
+    recommendations: list[_RecOut] = []
 
 
 async def crm_agent(state: AgentState) -> AgentState:
-    """Read existing client DNA + recent CRM notes, fetch news, synthesise a cited brief."""
+    """Read client DNA + recent CRM notes + news, synthesise a cited brief AND
+    select concrete CIO-BUY instruments that fit the request (grounded — the model
+    picks from a real candidate list by index, never invents tickers)."""
     try:
         if not state["client_id"]:
             raise ValueError("crm_agent requires a client_id")
@@ -120,6 +128,12 @@ async def crm_agent(state: AgentState) -> AgentState:
                     .where(Interaction.client_id == uuid_cid)
                     .order_by(Interaction.date.desc())
                     .limit(10)
+                )
+            ).scalars().all()
+            # The investable universe for concrete picks: CIO-BUY-rated rows.
+            cio_rows = (
+                await session.execute(
+                    select(CIORecommendation).where(CIORecommendation.rating == CIORating.BUY)
                 )
             ).scalars().all()
 
@@ -159,15 +173,33 @@ async def crm_agent(state: AgentState) -> AgentState:
 
         headlines = "\n".join(f"- {a.title}" for a in articles[:10]) or "(no articles)"
 
+        # Build a numbered catalogue of the CIO-BUY universe. The model selects by
+        # index, so it can only recommend instruments that actually exist (G2, no
+        # fabrication). Each line carries the citeable CIO rationale + value tags.
+        def _cand_line(i: int, c: CIORecommendation) -> str:
+            name = c.security or c.issuer or "(unnamed)"
+            tags = (c.tags or {}).get("value_tags") if isinstance(c.tags, dict) else None
+            return (
+                f"{i}. {name} — {c.industry_group or '?'} / {c.region or '?'} "
+                f"| ISIN {c.isin or 'n/a'} | tags {tags or []} | CIO: {c.cio_view or ''}"
+            )
+
+        catalog = "\n".join(_cand_line(i, c) for i, c in enumerate(cio_rows)) or "(none)"
+
         messages = [
             {
                 "role": "system",
                 "content": (
-                    "You are a research assistant for a relationship manager. "
-                    "Synthesise a concise 2-4 sentence brief about this client "
-                    "based on their DNA profile, recent CRM notes, and relevant news headlines. "
-                    "Include citations as short identifiers (note date or article headline). "
-                    "Respond with JSON only: {\"summary\": \"...\", \"citations\": [\"...\", ...]}."
+                    "You are a research assistant for a relationship manager. Do two things:\n"
+                    "1. Write a concise 2-4 sentence brief about the client from their DNA, "
+                    "recent CRM notes, and news headlines.\n"
+                    "2. From the CANDIDATE INSTRUMENTS list (CIO-BUY universe), select the ones "
+                    "that best answer the research request AND fit the client's values/exclusions. "
+                    "Reference each ONLY by its list index. NEVER invent an instrument not in the "
+                    "list. If none fit, return an empty recommendations array.\n"
+                    "Citations are short identifiers (note date or article headline).\n"
+                    "Respond with JSON only: {\"summary\": \"...\", \"citations\": [\"...\"], "
+                    "\"recommendations\": [{\"index\": 0, \"reason\": \"...\"}]}."
                 ),
             },
             {
@@ -176,21 +208,49 @@ async def crm_agent(state: AgentState) -> AgentState:
                     f"Client DNA:\n{dna_summary}\n\n"
                     f"Recent CRM notes:\n{notes_text}\n\n"
                     f"News headlines:\n{headlines}\n\n"
+                    f"CANDIDATE INSTRUMENTS (CIO BUY):\n{catalog}\n\n"
                     f"Research request: {state['input']}"
                 ),
             },
         ]
-        brief = await json_chat(messages, _BriefOut, temperature=0.3, max_tokens=512)
+        brief = await json_chat(messages, _BriefOut, temperature=0.3, max_tokens=900)
+
+        # Resolve picks back to real rows by index; drop any out-of-range index
+        # (the anti-fabrication guard). The names/ISINs come from the DB, not the LLM.
+        recommendations: list[dict] = []
+        for rec in brief.recommendations:
+            if 0 <= rec.index < len(cio_rows):
+                c = cio_rows[rec.index]
+                recommendations.append(
+                    {
+                        "security": c.security or c.issuer,
+                        "issuer": c.issuer,
+                        "isin": c.isin,
+                        "valor": c.valor,
+                        "industry_group": c.industry_group,
+                        "region": c.region,
+                        "cio_view": c.cio_view,
+                        "reason": rec.reason,
+                    }
+                )
+            else:
+                log.warning(
+                    "crm_agent.rec_out_of_range", task_id=state["task_id"], index=rec.index
+                )
 
         state["result"]["crm"] = {
             "summary": brief.summary,
             "citations": brief.citations,
+            "recommendations": recommendations,
             "notes_read": len(interactions),
             "articles_fetched": len(articles),
+            "candidates_considered": len(cio_rows),
         }
         state["trace"].append(
             f"[{_now()}] crm_agent: notes={len(interactions)}, "
-            f"articles={len(articles)}, dna_version={dna_row.version if dna_row else 'N/A'}"
+            f"articles={len(articles)}, candidates={len(cio_rows)}, "
+            f"recommendations={len(recommendations)}, "
+            f"dna_version={dna_row.version if dna_row else 'N/A'}"
         )
         log.info(
             "crm_agent.done",

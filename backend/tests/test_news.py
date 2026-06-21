@@ -109,7 +109,7 @@ async def test_search_articles_with_keywords():
     assert len(results) == 1
     assert results[0].title == "Pharma giant cuts research budget"
     body = mock_post.call_args[0][1]
-    assert body["keyword"] == "pharma research"
+    assert body["keyword"] == ["pharma", "research"]
     assert body["keywordOper"] == "or"
 
 
@@ -145,9 +145,11 @@ async def test_search_articles_defaults_lang_and_count():
 # get_recent_activity — async, _post mocked
 # ---------------------------------------------------------------------------
 
+# newestUri is returned by Event Registry as {"news": "<id>"}; the client
+# normalises it to the bare id string.
 _RECENT_RESPONSE = {
     "recentActivityArticles": {
-        "newestUri": "new-cursor-xyz",
+        "newestUri": {"news": "new-cursor-xyz"},
         "activity": [_FULL_ARTICLE],
     }
 }
@@ -159,7 +161,8 @@ async def test_get_recent_activity_with_cursor():
         articles, cursor = await get_recent_activity("old-cursor", keywords=["markets"])
     assert len(articles) == 1
     assert cursor == "new-cursor-xyz"
-    body = mock_post.call_args[0][1]
+    endpoint, body = mock_post.call_args[0]
+    assert endpoint == "/minuteStreamArticles"
     assert body["updatesAfterNewsUri"] == "old-cursor"
 
 
@@ -174,7 +177,7 @@ async def test_get_recent_activity_bootstrap_no_cursor():
 
 @pytest.mark.asyncio
 async def test_get_recent_activity_empty_feed():
-    empty = {"recentActivityArticles": {"newestUri": "c1", "activity": []}}
+    empty = {"recentActivityArticles": {"newestUri": {"news": "c1"}, "activity": []}}
     with patch("app.news._post", new=AsyncMock(return_value=empty)):
         articles, cursor = await get_recent_activity(None)
     assert articles == []

@@ -19,13 +19,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.loaders.alert_rank import rank_alerts
 from app.loaders.alerts import generate_alerts
+from app.loaders.change_radar import build_change_radar
 from app.loaders.crm import load_crm
 from app.loaders.drift import compute_drift
 from app.loaders.dna import extract_dna
+from app.loaders.email_ingest import ingest_email_signals
 from app.loaders.fact_sheet import assemble_fact_sheet
 from app.loaders.fit import compute_fit
 from app.loaders.holdings import enrich_holdings
 from app.loaders.message_render import render_message_draft
+from app.loaders.news_match import fanout_seeded_news
 from app.loaders.news_seed import seed_news_triggers
 from app.loaders.portfolio import load_portfolio
 from app.loaders.style_profile import extract_style_profiles
@@ -63,10 +66,13 @@ async def seed_personas(session: AsyncSession, data_dir: str | Path) -> dict:
       8  enrich      — live SIX pricing with graceful fallback
       9  watchlist   — per-client entity + theme watchlist; skips without DNA
      10  news        — four scripted D3 offline trigger articles
+     10b news_fanout — fan seeded articles out to all holders (multi-client events)
      11  alerts      — eight non-drift alert classes
      12  drift       — drift_breach + stale_sell alerts
      13  rank        — rank_score for all open alerts
-     14  message     — per-persona fact sheet + LLM draft (best-effort)
+     13b email       — inbound Microsoft Graph email → radar signals (no-op if unset)
+     14  radar       — book-wide Change Radar (event-inversion + impact scoring)
+     15  message     — per-persona fact sheet + LLM draft (best-effort)
 
     Returns a summary dict with row counts for every step and per-persona
     message results from step 14.
@@ -104,6 +110,12 @@ async def seed_personas(session: AsyncSession, data_dir: str | Path) -> dict:
     summary["news"] = await seed_news_triggers(session)
     log.info("personas.step_done", step="news")
 
+    # Fan the seeded triggers out to every holder of the named instruments, so a story
+    # on a widely-held name becomes a multi-client radar event (and news_impact alerts
+    # fire for each holder below). Without this, seeded NewsItems carry no client_ids.
+    summary["news_fanout"] = await fanout_seeded_news(session)
+    log.info("personas.step_done", step="news_fanout")
+
     summary["alerts"] = await generate_alerts(session)
     log.info("personas.step_done", step="alerts")
 
@@ -113,7 +125,19 @@ async def seed_personas(session: AsyncSession, data_dir: str | Path) -> dict:
     summary["rank"] = await rank_alerts(session)
     log.info("personas.step_done", step="rank")
 
-    # Step 14: per-persona fact sheet + LLM draft.
+    # Step 13b: inbound email signals via Microsoft Graph (TASK-060). Empty list when
+    # MS_GRAPH_* is unset, so the offline demo is unaffected; folded into the radar below.
+    email_signals = await ingest_email_signals(session)
+    summary["email_ingest"] = {"signals": len(email_signals)}
+    log.info("personas.step_done", step="email_ingest")
+
+    # Step 14: book-wide Change Radar — must run after alerts + drift + rank so all
+    # signals exist to invert into event-centric change_events (TASK-059). Email signals
+    # merge by entity_key so an email on an instrument dedups with its drift/CIO/news event.
+    summary["radar"] = await build_change_radar(session, extra_signals=email_signals)
+    log.info("personas.step_done", step="radar")
+
+    # Step 15: per-persona fact sheet + LLM draft.
     # Best-effort: skips if no dna_conflict alert exists for a persona.
     messages: dict[str, dict] = {}
     for name in REAL_PERSONA_NAMES:

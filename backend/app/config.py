@@ -57,7 +57,7 @@ class Settings(BaseSettings):
     )
 
     # --- App ---------------------------------------------------------------
-    app_name: str = "Wealth Advisory Workbench API"
+    app_name: str = "SixEase — Wealth Advisor Workbench API"
     environment: str = Field(default="development")
     log_level: str = Field(default="INFO")
     # Comma-separated origins; the Vite dev server (TASK-003) defaults to 5173.
@@ -148,16 +148,165 @@ class Settings(BaseSettings):
     phoeniqs_api_key: str = Field(default="")
     phoeniqs_model: str = Field(default="inference-gpt-oss-120b")
 
+    # --- Hosted-LLM token budget guard (always-on safety) — proactive loops ---
+    # Daily (UTC) total-token cap for the active *hosted* provider (Ollama is free
+    # and never metered). When reached, llm.chat() raises BudgetExhausted before
+    # spending; callers degrade softly (re-enqueue / skip) and the zero-LLM Change
+    # Radar keeps running. `0` disables the cap. Surfaced via GET /admin/budget.
+    phoeniqs_budget_tokens: int = Field(default=2_000_000)
+    # Emit a one-time log warning when cumulative daily spend crosses this percent
+    # of the cap. `0` disables the warning.
+    phoeniqs_budget_warn_pct: int = Field(default=80)
+    # --- Speech-to-text (voice notes, TASK-047 capture path) --------------
+    # Whisper is decoupled from `llm_provider` (like embeddings → Ollama). Pick
+    # the backend with `whisper_provider`:
+    #   local    — faster-whisper-server container on the GPU (default; offline,
+    #              reliable, on the no-cloud ethos). OpenAI-compatible /v1.
+    #   phoeniqs — hosted Whisper on Phoeniqs (~0.006 credits/min; was GPU-OOM
+    #              flaky under hackathon load).
+    # Resolved into a single (base_url, key, model) triple by the `whisper`
+    # property below.
+    whisper_provider: str = Field(default="local")
+    whisper_base_url: str = Field(default="http://whisper:8000/v1")
+    whisper_model: str = Field(default="Systran/faster-whisper-large-v3")
+    phoeniqs_whisper_model: str = Field(default="inference-whisper-large-v3")
+
     # --- SIX Financial Data (external MCP server) — TASK-006 / used by 013 -
     six_mcp_url: str = Field(
         default="https://ca-mcpwebapi-tools.nicepebble-599ed11f.westeurope.azurecontainerapps.io/mcp"
     )
     six_mcp_token: str = Field(default="")
 
+    # --- Microsoft Graph (inbound email transport) — TASK-060 ----------------
+    # SCOPED EXCEPTION to the "no Azure" rule (§20): Azure is used here ONLY as an
+    # email *transport* (read-only Mail.Read via client-credentials), never as infra.
+    # All four must be set for ingestion to run; otherwise it degrades to a no-op
+    # (see `ms_graph_enabled` + `missing_secrets`). `ms_graph_mailbox` is the RM's
+    # UPN/address — a message whose `from` equals it is outbound (context-only).
+    ms_graph_tenant_id: str = Field(default="")
+    ms_graph_client_id: str = Field(default="")
+    ms_graph_client_secret: str = Field(default="")
+    ms_graph_mailbox: str = Field(default="")
+    # Graph REST + OAuth endpoints (overridable for sovereign/national clouds).
+    ms_graph_authority: str = Field(default="https://login.microsoftonline.com")
+    ms_graph_base_url: str = Field(default="https://graph.microsoft.com/v1.0")
+    # Auth mode (TASK-061):
+    #   app       → client-credentials, app-only (original TASK-060 inbound path).
+    #   delegated → web "Sign in with Microsoft" (auth-code + PKCE). The RM signs
+    #               in with their OWN account; the app reads/sends THROUGH the
+    #               shared `ms_graph_mailbox` via Mail.Read.Shared / Mail.Send.Shared.
+    ms_graph_auth_mode: str = Field(default="app")
+    # Backend callback URL — must match a redirect URI on the Azure app registration.
+    ms_graph_redirect_uri: str = Field(default="")
+    # Delegated scopes (comma-separated). MSAL injects openid/profile/offline_access
+    # itself — do NOT list those here. Calendars.ReadWrite enables note→calendar
+    # write-back (TASK-062 Part B); drop it if you don't grant that permission.
+    ms_graph_scopes: str = Field(default="Mail.Read.Shared,Mail.Send.Shared,Calendars.ReadWrite")
+    # SPA URL the callback bounces back to after sign-in; defaults to first CORS origin.
+    ms_graph_post_login_redirect: str = Field(default="")
+    # Permit outbound send via Graph (RM-only — see notify.py). Off by default so the
+    # default transport stays MailHog/SMTP and the G1 boundary is explicit.
+    ms_graph_send_enabled: bool = Field(default=False)
+    # Timezone for calendar events created from notes (IANA name).
+    ms_graph_calendar_timezone: str = Field(default="Europe/Zurich")
+
+    # --- Email auto-draft (TASK-062 Part A) ----------------------------------
+    # When a NEW inbound email lands on the radar, the agent pre-drafts the answer
+    # (a reply for correspondence; an advisory for a holding) for RM review — draft
+    # only, never sent (G1). Off → emails still hit the radar, just no auto-draft.
+    email_autodraft_enabled: bool = Field(default=True)
+    # Cap drafts produced per refresh cycle (LLM-budget guard against an inbox flood).
+    email_autodraft_max_per_cycle: int = Field(default=3)
+
     # --- News = Event Registry / newsapi.ai (REST) — TASK-006 / used by 014 -
     newsapi_key: str = Field(default="")
     newsai_api_url: str = Field(default="https://eventregistry.org/api/v1")
-    news_poll_interval: int = Field(default=300)  # seconds; 5 min per §14.3
+    news_poll_interval: int = Field(default=1800)  # seconds; 30 min — token-budget conscious (Event Registry ~5k-token cap)
+    # Event Registry caps the number of keywords per query by subscription tier
+    # (hackathon tier = 80). The global firehose filter is ranked by cross-client
+    # breadth and truncated to this many — see watchlist.get_global_index.
+    news_max_keywords: int = Field(default=80)
+    # Proactive Change Radar refresh interval (seconds). A background task re-
+    # materialises the radar snapshot from continuously-ingested news/alerts so the
+    # RM always opens a current radar without a manual /admin/seed/radar. Pure
+    # aggregation (no LLM) → zero hosted-LLM (Phoeniqs) budget. Default 5 min.
+    radar_refresh_interval: int = Field(default=300)
+
+    # --- SIX price-watch loop (proactive layer — the free, non-token-metered axis)
+    # Scans held instruments via SIX (JSON-RPC, NOT token-billed → zero Phoeniqs
+    # budget) and emits price_move / maturity_soon Alert rows that flow through the
+    # radar like drift/news. Disabled to a no-op when off or SIX_MCP_TOKEN is unset.
+    price_watch_enabled: bool = Field(default=True)
+    price_watch_interval: int = Field(default=900)  # seconds; 15 min
+    # Absolute % move (vs last close / session open) that triggers a price_move alert.
+    price_move_threshold_pct: float = Field(default=5.0)
+    # Escalate a price_move alert to CRITICAL at/above this absolute % move.
+    price_move_critical_pct: float = Field(default=10.0)
+    # Flag a held bond when it matures within this many days (maturity_soon alert).
+    bond_maturity_horizon_days: int = Field(default=30)
+    # Per-position pause in the scan loop. SIX caps at 5 req/s per cert and each
+    # position makes one SIX call, so ~0.25s keeps the sequential scan under it.
+    price_watch_throttle_s: float = Field(default=0.25)
+
+    # Semantic relevance gate (EPIC-06 precision/cost): max cosine *distance*
+    # (0 = identical, 1 = orthogonal) between an article's embedding and a
+    # client's DNA profile vector for a care-axis / non-direct match to count.
+    # A direct holding (own-axis) match bypasses this gate. Tuned so each persona
+    # trigger passes while off-profile articles drop. Local Ollama embeddings, so
+    # this gate spends **zero** hosted-LLM (Phoeniqs) budget.
+    news_relevance_max_distance: float = Field(default=0.6)
+    # Master switch for the embedding relevance gate. It needs a reachable Ollama
+    # embeddings endpoint (`ollama_base_url` + `ollama_embed_model`); when that is
+    # unavailable the gate self-degrades to a no-op (logged once) so it never blocks
+    # news fan-out. Set false to skip it entirely (e.g. Ollama not deployed).
+    news_relevance_enabled: bool = Field(default=True)
+
+    # Cross-encoder rerank precision gate (EPIC-06 C2). A second, sharper local
+    # precision stage that scores the (matched-entity, article) pair JOINTLY and
+    # demotes vocabulary-overlap false positives the bi-encoder cosine gate keeps —
+    # run on the shortlist, BEFORE the hosted-LLM call, so it also cuts Phoeniqs
+    # spend. Fully local via fastembed/onnxruntime (no torch, no cloud). OFF by
+    # default: enabling requires the optional `fastembed` dependency (see
+    # requirements.txt) and downloads the model on first use. When enabled it loads
+    # eagerly and raises on failure rather than silently passing matches through.
+    news_cross_encoder_enabled: bool = Field(default=False)
+    news_cross_encoder_model: str = Field(default="Xenova/ms-marco-MiniLM-L-6-v2")
+    # ms-marco MiniLM emits logit scores (~ -11..+11); > 0 ≈ genuinely relevant.
+    news_cross_encoder_min_score: float = Field(default=0.0)
+
+    # --- Proactive radar dispatch (EPIC-08 — push, not pull) -----------------
+    # Turns the pull-only radar into push: Critical changes go to the RM in near-
+    # real-time (in-app SSE + email), everything else into a once-daily digest.
+    # Delivery is deduped via the radar_deliveries table. RM-only — nothing here
+    # reaches a client (autonomy boundary G1). No-op when disabled.
+    radar_dispatch_enabled: bool = Field(default=True)
+    radar_dispatch_interval: int = Field(default=60)  # seconds between dispatch cycles
+    # A change is "Critical" (near-real-time push) when its aggregate event
+    # magnitude (severity-band × confidence, 0..~1) is at/above this. Magnitude is
+    # portfolio-independent (unlike raw impact_score, which scales with CHF), so it
+    # maps cleanly to a Critical-severity underlying alert across all sources.
+    radar_critical_magnitude: float = Field(default=0.9)
+    # Re-notify an already-delivered change only when its impact_score climbs above
+    # (1 + margin) × the impact at last delivery — avoids alert churn on small moves.
+    radar_rebroadcast_margin: float = Field(default=0.5)
+    radar_digest_hour: int = Field(default=7)   # local hour (0-23) to send the daily digest
+    radar_digest_limit: int = Field(default=10)  # max non-critical changes in the digest
+    # Quiet hours: in-app SSE still fires, but Critical *emails* are deferred to the
+    # next digest. Wrap-around supported (e.g. 22→7 spans midnight). Equal = no quiet.
+    radar_quiet_start: int = Field(default=22)
+    radar_quiet_end: int = Field(default=7)
+
+    # --- RM-only outbound email transport (SMTP) — proactive dispatch --------
+    # The ONLY outbound-send path in the backend; targets the RM (rm_email) ONLY,
+    # never a client (G1). No-op + warning when unset. Defaults suit a local MailHog
+    # container (host "mailhog", port 1025, no TLS); set real SMTP for production.
+    smtp_host: str = Field(default="")
+    smtp_port: int = Field(default=1025)
+    smtp_user: str = Field(default="")
+    smtp_password: str = Field(default="")
+    smtp_from: str = Field(default="sixease@localhost")
+    smtp_starttls: bool = Field(default=False)
+    rm_email: str = Field(default="")
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -182,6 +331,60 @@ class Settings(BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def ms_graph_enabled(self) -> bool:
+        """True only when every Graph credential is set (TASK-060).
+
+        The email-ingest loader gates on this: unset → return no signals (the
+        offline persona demo stays green); set-but-failing → raise loud at call time.
+        """
+        return bool(
+            self.ms_graph_tenant_id
+            and self.ms_graph_client_id
+            and self.ms_graph_client_secret
+            and self.ms_graph_mailbox
+        )
+
+    @property
+    def ms_graph_delegated_enabled(self) -> bool:
+        """True when the delegated "Sign in with Microsoft" flow can run (TASK-061).
+
+        Needs every Graph credential (as `ms_graph_enabled`) plus a registered
+        redirect URI and `ms_graph_auth_mode=delegated`. The /auth/ms/login route
+        returns 503 when this is false rather than starting a broken OAuth dance.
+        """
+        return bool(
+            self.ms_graph_enabled
+            and self.ms_graph_redirect_uri
+            and self.ms_graph_auth_mode.strip().lower() == "delegated"
+        )
+
+    @property
+    def whisper(self) -> LLMConfig:
+        """The resolved Whisper backend (TASK-047), independent of `llm_provider`.
+
+        `local` (default) → the keyless faster-whisper-server container; `phoeniqs`
+        → hosted Whisper with the Phoeniqs key. Reuses LLMConfig's
+        (provider, base_url, api_key, model) shape.
+        """
+        if self.whisper_provider.strip().lower() == "phoeniqs":
+            return LLMConfig(
+                "phoeniqs", self.phoeniqs_api_url, self.phoeniqs_api_key, self.phoeniqs_whisper_model
+            )
+        return LLMConfig("local", self.whisper_base_url, "", self.whisper_model)
+
+    @property
+    def whisper_enabled(self) -> bool:
+        """True when voice-note transcription can run (TASK-047 capture path).
+
+        Local Whisper needs only a reachable container (no key). The hosted
+        Phoeniqs backend needs its key — the transcribe endpoint surfaces a loud
+        error when unset (no silent fallback).
+        """
+        if self.whisper_provider.strip().lower() == "phoeniqs":
+            return bool(self.phoeniqs_api_key)
+        return True
 
     @property
     def llm(self) -> LLMConfig:
@@ -224,10 +427,18 @@ class Settings(BaseSettings):
         elif provider == "phoeniqs" and not self.phoeniqs_api_key:
             missing.append(MissingSecret("PHOENIQS_API_KEY", "LLM generation (Phoeniqs selected)"))
 
+        if not self.whisper_enabled:
+            missing.append(
+                MissingSecret("PHOENIQS_API_KEY", "Voice-note transcription (Whisper on Phoeniqs)")
+            )
         if not self.six_mcp_token:
             missing.append(MissingSecret("SIX_MCP_TOKEN", "SIX market data (prices, instrument lookup)"))
         if not self.newsapi_key:
             missing.append(MissingSecret("NEWSAPI_KEY", "Event Registry news + sentiment monitoring"))
+        if not self.ms_graph_enabled:
+            missing.append(
+                MissingSecret("MS_GRAPH_*", "Email ingestion via Microsoft Graph (Change Radar email signals)")
+            )
 
         return missing
 

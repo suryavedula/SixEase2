@@ -1,4 +1,4 @@
-import { apiGet } from "./client";
+import { apiGet, apiPost } from "./client";
 
 // ---------------------------------------------------------------------------
 // /portfolio/fit
@@ -79,7 +79,7 @@ export interface PositionSwaps {
   sub_asset_class: string | null;
   current_chf: number | null;
   current_fit_score: number | null;
-  conflict_tags: unknown[] | null;
+  conflict_tags: ConflictItem[] | null;
   candidates: SwapCandidate[];
 }
 
@@ -91,7 +91,7 @@ export interface KeptPosition {
   sub_asset_class: string | null;
   current_chf: number | null;
   current_fit_score: number | null;
-  conflict_tags: unknown[] | null;
+  conflict_tags: ConflictItem[] | null;
   keep_reason: string | null;
 }
 
@@ -128,4 +128,29 @@ export function getPortfolioSwaps(
   signal?: AbortSignal,
 ): Promise<SwapProposalsResponse> {
   return apiGet<SwapProposalsResponse>(`/clients/${clientId}/portfolio/swaps`, signal);
+}
+
+// ---------------------------------------------------------------------------
+// /portfolio/swaps/decision — persist the RM's approve/reject (HITL).
+// Records a MANUAL Task; never executes a trade.
+// ---------------------------------------------------------------------------
+
+export interface SwapDecisionResponse {
+  task_id: string;
+  status: string;
+  decision: string;
+  proposal_count: number;
+}
+
+export function decideSwaps(
+  clientId: string,
+  decision: "approved" | "rejected",
+  notes?: string,
+  signal?: AbortSignal,
+): Promise<SwapDecisionResponse> {
+  return apiPost<SwapDecisionResponse>(
+    `/clients/${clientId}/portfolio/swaps/decision`,
+    { decision, notes: notes ?? null },
+    signal,
+  );
 }

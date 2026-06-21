@@ -30,7 +30,7 @@ export interface AlertWithClient extends AlertItem {
 }
 
 export interface AlertTransitionRequest {
-  status: "acted" | "dismissed" | "snoozed";
+  status: "open" | "acted" | "dismissed" | "snoozed"; // "open" reopens (Undo)
   snoozed_until?: string;   // ISO-8601; required when status="snoozed"
   dismissed_reason?: string;
 }

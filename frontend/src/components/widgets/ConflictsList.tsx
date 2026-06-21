@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { AlertTriangle, Check } from "lucide-react";
+import { chfFormat } from "../../lib/format";
+import { SkeletonCard } from "./SkeletonCard";
 import { getPortfolioFit } from "../../api/portfolio";
 import type { HoldingFit, PortfolioFitResponse } from "../../api/portfolio";
 import { getClientDna } from "../../api/dna";
@@ -10,10 +13,6 @@ type Status =
   | { kind: "ok"; data: PortfolioFitResponse }
   | { kind: "error"; message: string };
 
-function chfFormat(v: number | null): string {
-  if (v === null) return "—";
-  return `CHF ${v.toLocaleString("de-CH", { maximumFractionDigits: 0 })}`;
-}
 
 function ConflictRow({ h }: { h: HoldingFit }) {
   const exclusionTags = (h.conflicts ?? [])
@@ -75,18 +74,12 @@ export function ConflictsList({ clientId }: ConflictsListProps) {
   }, [clientId]);
 
   if (status.kind === "loading") {
-    return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 space-y-3">
-        <div className="h-5 w-32 animate-pulse rounded bg-panel3" />
-        <div className="h-10 w-full animate-pulse rounded bg-panel3" />
-        <div className="h-10 w-full animate-pulse rounded bg-panel3" />
-      </div>
-    );
+    return <SkeletonCard lines={2} />;
   }
 
   if (status.kind === "error") {
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 text-[13px]">
+      <div className="rounded-2xl border border-border bg-panel p-4 text-[13px]">
         <p className="text-muted">Could not load conflicts.</p>
         <p className="mt-1 text-dim text-[11px]">{status.message}</p>
       </div>
@@ -97,15 +90,17 @@ export function ConflictsList({ clientId }: ConflictsListProps) {
   const conflicts = data.holdings.filter((h) => h.fit_score === 0);
 
   return (
-    <div className="rounded-[14px] border border-border bg-panel p-4">
+    <div className="rounded-2xl border border-border bg-panel p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="font-semibold text-[15px] text-text">Conflicts</span>
         {conflicts.length > 0 ? (
-          <span className="rounded border border-red/20 bg-red/10 px-2 py-0.5 text-[11px] font-semibold text-red">
+          <span className="inline-flex items-center gap-1 rounded border border-red/20 bg-red/10 px-2 py-0.5 text-[11px] font-semibold text-red">
+            <AlertTriangle className="h-3 w-3" />
             {conflicts.length} holding{conflicts.length !== 1 ? "s" : ""}
           </span>
         ) : (
-          <span className="rounded border border-green/20 bg-green/10 px-2 py-0.5 text-[11px] font-semibold text-green">
+          <span className="inline-flex items-center gap-1 rounded border border-green/20 bg-green/10 px-2 py-0.5 text-[11px] font-semibold text-green">
+            <Check className="h-3 w-3" />
             None
           </span>
         )}

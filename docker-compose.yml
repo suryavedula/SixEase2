@@ -152,6 +152,40 @@ services:
     volumes: [ollamadata:/root/.ollama]
     networks: [wealthnet]
     restart: unless-stopped
+
+  whisper:            # TASK-047 — local Whisper STT (OpenAI-compatible /v1/audio/transcriptions)
+    # faster-whisper-server on the GPU; reliable & offline (no Phoeniqs OOM).
+    # Model auto-downloads to the HF cache volume on first request.
+    image: fedirz/faster-whisper-server:latest-cuda
+    environment:
+      WHISPER__MODEL: ${WHISPER_MODEL:-Systran/faster-whisper-large-v3}
+      WHISPER__INFERENCE_DEVICE: cuda
+      # int8 keeps VRAM low (~1.8GB for large-v3) so it shares the laptop GPU
+      # with Ollama. Set to float16 for a touch more accuracy if VRAM allows.
+      WHISPER__COMPUTE_TYPE: int8
+      # No-cloud: silence the image's startup telemetry (gradio / HF hub pings).
+      DO_NOT_TRACK: "1"
+      GRADIO_ANALYTICS_ENABLED: "False"
+      HF_HUB_DISABLE_TELEMETRY: "1"
+    ports:
+      - "${WHISPER_PORT:-18001}:8000"   # host-published for debugging; backend uses whisper:8000
+    volumes:
+      - whisperdata:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks: [wealthnet]
+    restart: unless-stopped
   #
   # mcp-proxy:          # TASK-013 — local proxy to the external SIX MCP server
   #   build: ./mcp-proxy
@@ -167,4 +201,5 @@ volumes:
   redisdata:
   miniodata:
   pgadmindata:
+  whisperdata:         # TASK-047 — persists the downloaded Whisper model (HF cache)
   ollamadata:          # TASK-012 — persists pulled Ollama models across restarts

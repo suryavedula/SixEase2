@@ -1,152 +1,184 @@
-# SIX-Noumena-NTT-Data
+# SixEase — The Next Generation of Wealth Advisory
 
-## Challenge Title
+> An advisor workbench that lets a relationship manager (RM) deliver hyper-personalised,
+> *feel-known* service to every client at scale — with the human always in the loop.
+>
+> Built for **SwissHacks 2026**, the SIX × Noumena Digital × NTT DATA challenge
+> *"The Next Generation of Wealth Advisory."*
 
-**The Next Generation of Wealth Advisory**
+## What it is
 
-## Introduction
+The best relationship managers know their clients inside out — values, life events, business
+context shape every proposal. That care doesn't scale past a handful of clients. **SixEase**
+closes the gap: the AI remembers everything so the human can show up as if they remembered
+everything. AI suggests and explains, the RM recommends, the client always decides.
 
-### Problem Description
+SixEase is a **companion layer on top of the existing CRM — not a CRM replacement.** It reads
+the bank's conversation logs, builds a structured "investment identity" (DNA) for each client,
+watches portfolios against live news and CIO signals, and turns every insight into a
+*reviewable draft action* for the RM.
 
-Hyper-personalised wealth advice is today reserved for a handful of ultra-high-net-worth clients. The best relationship managers know their UHNWI clients inside out — values, life events, and business context shape every proposal — but this level of care does not scale past a handful of clients. Tailoring proposals to each client's full personal context, monitoring news across every holding, and drafting individual narratives takes more time than any relationship manager has.
+The core mechanic: **strategy is invariant, instrument selection is the free variable.** The
+mandate (Defensive / Balanced / Growth) and the CIO sub-asset-class targets are never changed.
+Personalisation happens only by swapping *which instrument* fills a slot — a same–`Industry
+Group`, CIO-`BUY`, not-currently-held, risk-neutral replacement that better fits the client's
+DNA. That's what makes personalisation-at-scale possible without breaking the mandate.
 
-AI changes the equation. With the right workbench, every client receives the same proactive, hyper-personalised care — 24/7 — while the relationship manager stays in the loop and the client always decides.
+## Core features (MVP)
 
-### Case Introduction
+1. **Generative, personalised UI** — the RM summons views on demand and sets a default entry
+   view; the same data is presented in different ways. A typed component registry + a render
+   protocol where the model emits `{component, props}` and the client renders it. Grounding
+   rule: the LLM picks/arranges widgets and writes narrative, but **every number comes from a
+   data tool — it never authors figures.**
+2. **Personalised portfolio at scale** — DNA-driven, same-sector, CIO-constrained instrument
+   swaps with explainable fit scores across the whole book.
+3. **News + CRM-driven alerts** — watchlist = held entities ∪ DNA themes; near-real-time
+   monitoring via Event Registry; a ranked, deduped alert queue.
+4. **Tailored message generation** — locked facts rendered in each client's preferred style
+   (analytical/data-driven vs. values-led/inspiring), with provenance and channel-awareness.
+5. **Voice mode** — query the canvas and dictate notes by voice (local Whisper STT).
+6. **Voice-note & note generation** — dictation → structured CRM note written back as a draft,
+   with proposed DNA updates and follow-up tasks.
+7. **Tasks with selective autonomous execution** — the agent generates tasks and **auto-runs
+   the safe ones** (research / analysis / draft-prep) into cited briefs, leaving every outward
+   or irreversible action to the RM.
 
-The task is to build the next-generation advisor dashboard in 48 hours: a single place where a relationship manager can understand a client's investment identity, monitor their portfolio against live news and CIO signals, and act on the right insight at the right time.
+### Non-negotiable principles
 
-The core insight is that the investment strategy stays unchanged. Personalisation happens at the asset level: within a client's chosen mandate (Defensive, Balanced, or Growth), AI identifies holdings that conflict with the client's personal DNA and proposes a replacement from the same sector that fits both the strategy and the client personally.
+- **Human in the loop** — nothing reaches the client automatically. Agents may research and
+  draft autonomously, but never take outward/irreversible actions (contacting a client,
+  placing an order, sending a message).
+- **Traceability & explainability** — every alert, suggestion, and drafted message cites its
+  evidence (the CRM note, portfolio position, news event, or CIO row that produced it) and
+  states *why* in plain language.
+- **Strategy preserved** — the mandate and CIO targets are never altered; only instrument
+  selection within a slot changes.
 
-The dashboard is built around four steps:
+## Architecture
 
-1. **Read and Interpret CRM Notes** — parse raw conversation logs and build each client's investment identity: values, business context, and personal priorities.
-2. **Connect to Portfolio and News** — link the client profile to their current holdings and a live news feed.
-3. **Surface Relevant Alerts** — match each client's profile against the portfolio and incoming news to flag potential conflicts or opportunities.
-4. **Generate a Tailored Message** — draft the RM's advisory note in the client's preferred style: data-driven and precise, or values-led and inspiring.
-
-**Human in the loop:** AI equips the relationship manager with insights and draft proposals. It never advises the client directly. The RM recommends, the client always decides and places the orders.
-
-One suggested architecture is a multi-agent approach — an orchestrator coordinating a CRM Agent, Portfolio Agent, News Agent, and Message Agent, with a consolidated dashboard — but teams are free to innovate.
-
-## Potential Users
-
-Relationship managers in wealth management who act as trusted partners in helping high-net-worth and ultra-high-net-worth clients grow and protect their wealth.
-
-## Use Cases
-
-The solution brings together four core capabilities:
-
-- **Build the Client DNA:** AI reads all raw CRM conversation logs and maps each client's personal profile — values, business interests, family context, and individual preferences — automatically, without manual data entry.
-- **Monitor Global News 24/7:** News relevant to a client's holdings or personal profile is flagged the moment it breaks: a pharma pivot, a governance scandal, a sustainability milestone.
-- **Suggest Personal Asset Swaps Within the Strategy:** Within the client's existing mandate, AI identifies holdings that conflict with their DNA and proposes a replacement from the same sector that fits both the strategy and the client personally. The CIO recommendation list constrains the swap universe.
-- **Personalise the Advisory Message:** Every proposal comes with a draft message for the RM, written in the client's preferred communication style — analytical and data-driven for one, purpose-led and inspiring for another.
-
-The challenge provides four client personas to build and test against, each with a distinct trigger event:
-
-| Persona | Profile | Strategy | CRM Tab | Portfolio Tab | Trigger |
-|---|---|---|---|---|---|
-| Schneider — The Personal Connection | Emotional and purpose-driven; family foundation supporting a specific chronic-illness research field | Balanced | `CRM Schneider` | `Sample Portfolio Balanced` | Pharma company shuts down its research division for that disease |
-| Huber — The Purpose-Driven Investor | Environmentalist financing South American reforestation; holds global consumer staples | Defensive | `CRM Huber` | `Sample Portfolio Defensive` | Consumer goods company announces historic palm oil deforestation cut-off |
-| Räber — The Defensive Value Investor | Conservative Swiss couple; precision-engineering background; averse to US tech | Defensive | `CRM Raeber` | `Sample Portfolio Defensive` | CIO suggests rebalancing from blue chips into US AI stocks |
-| Ammann — The Corporate Reputation Case | Prominent Swiss entrepreneur; reputational risk equals financial risk | Growth | `CRM Ammann` | `Sample Portfolio Growth` | Labour exploitation scandal hits a consumer brand in the portfolio |
-
-## Expected Outcome
-
-Expected deliverables include an end-to-end clickable prototype or working front-end; a minimal back-end or agent flow demonstrating personalisation and reasoning; and a short demo story showing how a relationship manager uses the dashboard to understand a client change, explain it, and decide on the next best action.
-
-Expected Presentation: A concise presentation (.pptx) including slides with a clear demo of the developed solution.
-Key elements:
--   Problem & solution: Clearly define the problem and how your solution addresses it
--   Demo: Showcase the solution in action within the slides
--   Core functionalities: Highlight key features and their value
--   User journey: Illustrate how users interact with the solution
-
-Each hack team is required to **submit their code**; and **complete a short feedback** form on the MCP (what worked, what didn’t, etc.), one submission per team is sufficient and it will take no more than 5 minutes: https://forms.office.com/e/tX2cH5n9Yi 
-
-## Technology
-
-### Available Technology
-
-- **SIX Financial Information (MCP server + Web API):** market and financial data including real-time and historical prices (equities, funds, ETFs, bonds), macroeconomic indicators (rates, inflation, FX), fundamentals, and estimates. The MCP server exposes 23 tools (reference data, symbology, venues, issuers, prices); 6 tools are outside the hackathon token's subscription. Configure via `mcp.json` (streamable-http, bearer token provided by the SIX Group contact) — the same file configures both the data pipeline and any participant's tooling. Each sample-portfolio position carries a Valor and MIC (combine as `{Valor}_{MIC}` for SIX MCP listing tools such as `end_of_day_snapshot`, `intraday_snapshot`, `end_of_day_history`; use the Valor alone for instrument tools). For bonds, use SIX `instrument_symbology` with the ISIN directly.
-- **Event Registry / Tenity MCP-News Server:** live news and sentiment feed for event- and news-driven signals. [Event Registry API](https://newsapi.ai/) access is provided; Yahoo Finance and Google News also work.
-- **LLM API Credits:** credits for large language model APIs are provided via [Phoeniqs](https://console.phoeniqs.com/) — no need to bring your own key.
-- **Provided datasets (two workbooks):**
-
-| Workbook | Contents |
+| Layer | Choice |
 |---|---|
-| `data/SwissHacks CRM.xlsx` | Three-year relationship-manager interaction logs for four sample clients (Räber, Schneider, Huber, Ammann), capturing financial behaviour, preferences, and evolving signals over time. One tab per client. |
-| `data/SwissHacks Portfolio Construction.xlsx` | Three model mandates (Defensive, Balanced, Growth; each summing to CHF 10M): CIO sub-asset-class targets (`Portfolio Strategies`), current positions with target and drifted market values, a CIO recommendation list with BUY/HOLD/SELL ratings and swap candidates, three-year transaction history, and cash flows (deposits, withdrawals, fees, coupons). Includes SIX (Valor + MIC) and Yahoo ticker identifiers. The Balanced and Growth portfolios carry deliberate post-rebalance mandate-drift breaches for use in rebalancing scenarios. |
+| Frontend | **React 19 + Tailwind v4** (Vite) — our own generative component registry |
+| Backend | **FastAPI** (Python) |
+| Orchestration | **LangGraph** — orchestrator → CRM / Portfolio / News / Message agents; trust-critical flows stay deterministic |
+| LLM | Open-source, **Gemma 3 12B** local via **Ollama** (default), or hosted via **OpenRouter** / **Phoeniqs** — one OpenAI-compatible interface, switchable by config |
+| Embeddings | Always **Ollama** (dedicated client) |
+| Speech-to-text | Local **faster-whisper** (GPU), OpenAI-compatible |
+| Database | **PostgreSQL + pgvector** (DNA, holdings, alerts, tasks, notes, embeddings) |
+| Cache / queue | **Redis** (news-poll + task queues, caching) |
+| Object store | **MinIO** (S3-compatible — reports, exports, voice-note audio) |
+| Dev infra | pgAdmin, MailHog (email-draft handoff testing) |
+| Packaging | **Docker Compose** |
 
-- **Noumena Digital:** domain models, knowledge graphs, and AI-ready financial abstractions.
-- **NTT DATA:** reference architectures and AI / cloud / trust-by-design assets, including Azure OpenAI–based patterns for explainable AI, retrieval-augmented generation, and multi-agent decision support.
+**No Azure / no cloud dependency** — everything runs locally and is self-hostable. (Optional,
+degrades to a no-op: Microsoft Graph as a *read-only* email-ingestion transport when
+`MS_GRAPH_*` is configured; no compute, LLM, storage, or DB ever moves to the cloud, and no
+email is ever auto-sent.)
 
-### Expected or Suggested Tech Stack
+### External providers
 
-SIX MCP server (streamable-http, bearer token) with the SIX Web API as a REST/JSON alternative (certificate-based authentication); Event Registry API or Tenity MCP-News server for news signals; LLM API of your choice (credits provided); Noumena Cloud (Azure-based) with knowledge graphs and financial abstractions; and Azure OpenAI–based patterns for explainable AI, retrieval-augmented generation, and multi-agent decision support.
+- **SIX Financial Data** — an **MCP server** (JSON-RPC `tools/call` over streamable-http),
+  not REST. Address instruments by **Valor**, listings by composite **`{valor}_{mic}`** for
+  price tools, and bonds by **ISIN** via `instrument_symbology`. See `docs/SIX_MCP.md`.
+- **Event Registry / newsapi.ai** — live news + sentiment, REST; near-real-time minute-stream
+  for 24/7 monitoring.
+- **Phoeniqs** — OpenAI-compatible hosted LLM credits (fallback to the local Ollama path).
 
-## Challenge Slides
+## Project structure
 
-- [The Next Generation of Wealth Advisory — challenge pitch deck](docs/The%20Next%20Generation%20of%20Wealth%20Advisory.pdf)
-- [The Next Generation of Wealth Advisory — deep-dive deck](docs/The%20Next%20Generation%20of%20Wealth%20Advisory%20DeepDive.pdf)
+```
+backend/         FastAPI app — agents (LangGraph), loaders (DNA, swap, alerts, news…),
+                 routers, models (Postgres + pgvector), SIX/news/LLM clients
+frontend/        React + Vite + Tailwind — generative UI shell, widget registry, API clients
+data/            The two provided workbooks (SwissHacks CRM + Portfolio Construction)
+docs/            Requirements.md (living product spec, §1–§20) + vendor references
+demo/            Reference integration (Express/TS) — how to call each provider; NOT the product
+infra/           Postgres init (pgvector), local infra config
+docker-compose.yml
+```
 
-## Resources & Further Information
+## Getting started
 
-### Reference Integration Demo
+Prerequisites: Docker + Docker Compose. A CUDA GPU is recommended for the local Ollama and
+Whisper services (the LLM/STT paths can be pointed at hosted providers instead via `.env`).
 
-The [`demo/`](demo/) folder contains a runnable starter that wires the three core integrations together end to end — Phoeniqs LLM, the SIX MCP server, and Event Registry news — behind a TypeScript/Express back-end and a single-page front-end. It exposes a stock-analysis endpoint (`POST /api/analysis/analyze`) and an integration health check (`GET /api/analysis/integrations`), so you can confirm your credentials work before building on top.
+```bash
+cp .env.example .env          # fill in SIX_MCP_TOKEN, NEWSAPI_KEY, and (optionally) PHOENIQS_API_KEY
+docker compose up -d          # starts the full stack; backend runs alembic migrations on boot
+```
 
-- **Setup:** copy `demo/.env.example` to `demo/.env` and fill in your Phoeniqs, SIX MCP, and Event Registry keys.
-- **Run:** `cd demo && npm install && npm run dev`, then open `http://localhost:3000`.
+Pull the local model once (first run):
 
-Use it as a reference for how to call each provider, or as scaffolding for your own dashboard.
+```bash
+docker compose exec ollama ollama pull gemma3:12b
+docker compose exec ollama ollama pull <your OLLAMA_EMBED_MODEL>
+```
 
-### Relevant Links
+Then open:
 
-- SIX Financial Information MCP tools reference: see `docs/SIX_MCP.md` for a tested guide to all 23 tools with real example outputs.
-- News aggregation API (used by the Tenity MCP-News server): https://newsapi.ai/
-- LLM API platform (Phoeniqs): https://console.phoeniqs.com/
-- Phoeniqs setup guide (access + OpenCode config): [Phoeniqs AI — Access & Setup](docs/Phoeniqs_AI.md)
-- SIX MCP Developer Guide (vendor reference): [MCP Developer Guide 2026](docs/MCP%20Developer%20Guide%202026.pdf)
+| Service | URL |
+|---|---|
+| Frontend (workbench) | http://localhost:5173 |
+| Backend API + docs | http://localhost:8000 · http://localhost:8000/docs |
+| MailHog (draft email inbox) | http://localhost:8025 |
+| MinIO console | http://localhost:9001 |
+| pgAdmin | http://localhost:5050 |
 
-### Additional Information
+### Configuration notes
 
-Data conventions for the portfolio workbook: all amounts are in CHF; ISINs follow ISO 6166; equities are priced at real historical closes and bonds at par (100% of face value); for bonds, quantity = face value ÷ 100. Summing BUY − SELL quantities per ISIN gives the current position. `Current (CHF)` reflects post-rebalance market drift (prices as of approximately 10 days after the April 2026 rebalance); `Target (CHF)` is the rebalance allocation and still sums to CHF 10,000,000 per portfolio. The workbook README sheet lists SIX coverage details and the ±2.0pp mandate-drift rule.
+- **LLM provider** is selected by `LLM_PROVIDER` (`ollama` default; `openrouter` or `phoeniqs`
+  when VRAM-limited). All three are OpenAI-compatible and interchangeable by config.
+- **Embeddings always use Ollama** regardless of the active chat provider.
+- **Speech-to-text** runs locally via the `whisper` service (`WHISPER_PROVIDER=local`).
+- Ports, credentials, and provider keys are all driven from `.env` — see `.env.example` for
+  the full annotated list.
 
-## Judging Criteria
+## The four personas
 
-| Criterion | Description | Weight |
-|---|---|---|
-| Creativity | Novel human–AI interaction; fresh ideas beyond standard chatbots | 25% |
-| Trust & Explainability | Transparency, traceability, and human control | 25% |
-| Feasibility | Technical realism and architectural soundness | 20% |
-| Visual Design | Clarity, usability, and a trust-oriented UI | 15% |
-| Presentation Quality | Clear and convincing storytelling | 15% |
+The challenge ships four client personas, each with a distinct trigger event:
 
-## Point of Contact
-
-### Contact Person(s)
-
-| Company | Name | Contact | Support |
+| Persona | Profile | Strategy | Trigger |
 |---|---|---|---|
-| SIX | Ramiro Lopez Cento | ramiro.lopez@six-group.com | MCP |
-| SIX | Laurent Lefevre | laurent.lefevre@six-group.com | webAPI, MCP |
-| SIX | Jennifer Chang | jennifer.chang@six-group.com | Coordination |
-| SIX | Magdalena Tuta | magdalena.tuta@six-group.com | Coordination, Pitch Training |
-| NTT DATA | Thomas Geiger | thomas.geiger@nttdata.com | Wealth Management Expert, Personas, Business Case |
-| NTT DATA / Phoeniqs | Stefan Taroni | stefan.taroni@phoenix-technologies.ch | Tech / LLM Infrastructure & Credits |
-| Noumena Digital | Sandra Daub | sandra@noumenadigital.com | Wealth Management Expert, Personas, Business Case |
-| Noumena Digital | Imants Firsts | imants.firsts@noumenadigital.com | Tech Infrastructure |
+| **Schneider** — The Personal Connection | Emotional, purpose-driven; family foundation funding chronic-illness research | Balanced | Pharma company shuts down research for that disease |
+| **Huber** — The Purpose-Driven Investor | Environmentalist financing reforestation; holds consumer staples | Defensive | Consumer-goods firm announces a historic palm-oil deforestation cut-off |
+| **Räber** — The Defensive Value Investor | Conservative Swiss couple; precision-engineering background; averse to US tech | Defensive | CIO suggests rebalancing blue chips into US AI stocks |
+| **Ammann** — The Corporate Reputation Case | Prominent Swiss entrepreneur; reputational risk = financial risk | Growth | Labour-exploitation scandal hits a portfolio consumer brand |
 
-### Availability
+## Data
 
-In person throughout the event (SwissHacks, Zurich, 19 to 21 June 2026). Mentors will be on-site on the evening of 19 June after the presentations, and on 20 June throughout the day. The contacts above are also reachable by email for any questions during the event.
+Two workbooks in `data/` drive everything (amounts in CHF; dates are Excel serials; bonds
+priced at par; sub-asset-class drift rule is **±2.0pp**, with Balanced & Growth shipping
+deliberate breaches):
 
-## Prize
+- `SwissHacks CRM.xlsx` — one tab per persona; a 3-year narrative of RM interactions. Client
+  identity is *extracted* from notes, not read off fields.
+- `SwissHacks Portfolio Construction.xlsx` — model mandates, CIO sub-asset-class targets, the
+  172-row CIO recommendation list (BUY/HOLD/SELL + swap candidates), and the three sample
+  portfolios with SIX (Valor + MIC) / ISIN / Yahoo identifiers.
 
-Thank you for choosing the SIX challenge!
+Full inspected contents and conventions: `docs/Requirements.md` §10.
 
-The top two teams will receive the opportunity to pitch to SIX Management + receive SIX Goodie Bags ;-)
+## Documentation
 
-Plus — all our hackers have the chance to receive a private pitch coaching session with our expert on Saturday, in preparation to the Sunday evaluations. Sign up with Magdalena at the SIX Booth!
+- **`docs/Requirements.md`** — the living product spec (§1–§20): vision, engine model, data
+  inventory, and every design decision. **Start here.**
+- `Project-Overview.html` — self-contained visual explainer + interactive mock prototype
+  (open in a browser, no server needed).
+- `docs/SIX_MCP.md` — tested reference for the SIX MCP tools with real example outputs.
+- `docs/Phoeniqs_AI.md` — Phoeniqs access & setup.
+- `demo/` — reference integration that smoke-tests all three providers end to end.
 
+## Reference demo
+
+The `demo/` folder wires Phoeniqs LLM, the SIX MCP server, and Event Registry behind a
+TypeScript/Express backend — kept as a credential smoke-test and a reference for how to call
+each provider. It is **not** the product.
+
+```bash
+cd demo && cp .env.example .env   # fill PHOENIQS_API_KEY, SIX_MCP_TOKEN, NEWSAPI_KEY
+npm install && npm run dev        # http://localhost:3000
+```
+
+`GET /api/analysis/integrations` pings all three providers with masked credentials — use it to
+verify keys before building.

@@ -79,10 +79,18 @@ async def assemble_fact_sheet(
                 "— run /admin/seed/alerts first"
             )
 
-    # 3. Resolve conflict position from alert evidence
+    # 3. Resolve the anchor position from alert evidence. dna_conflict/drift/swap
+    # alerts carry the holding's isin/valor at the top level; news_impact/panic
+    # reach-outs instead carry the held position(s) under matched_holdings — anchor
+    # to the first held match there.
     evidence_item = (alert.evidence or [{}])[0]
     conflict_isin = evidence_item.get("isin")
     conflict_valor = evidence_item.get("valor")
+    if not conflict_isin and not conflict_valor:
+        matched = evidence_item.get("matched_holdings") or []
+        if matched:
+            conflict_isin = matched[0].get("isin")
+            conflict_valor = matched[0].get("valor")
 
     position = None
     if conflict_isin:
@@ -101,8 +109,10 @@ async def assemble_fact_sheet(
         )
     if position is None:
         raise RuntimeError(
-            f"Conflict position not found for alert {alert.id} "
-            f"(isin={conflict_isin}, valor={conflict_valor})"
+            f"This {alert.alert_class} alert isn't anchored to a holding, so there's "
+            "no portfolio fact sheet to draft from. Grounded drafts are built around "
+            "a specific position (a values conflict, drift, or a news event on a held "
+            "name)."
         )
 
     enriched = await session.scalar(

@@ -130,33 +130,66 @@ def _parse_articles(results: list[dict[str, Any]]) -> list[NewsArticle]:
 # ---------------------------------------------------------------------------
 
 
+def _apply_query_filter(
+    body: dict[str, Any],
+    keywords: list[str] | None,
+    concepts: list[str] | None,
+) -> None:
+    """Apply Event Registry's simple top-level keyword/concept filters, in place.
+
+    Uses ER's documented top-level params (`keyword`/`keywordOper`,
+    `conceptUri`/`conceptOper`) — NOT a `$query` wrapper. ER silently ignores an
+    unknown top-level `$query` key and returns the entire unfiltered firehose
+    (~5M articles, newest-first) instead of the requested topic, which is why
+    persona searches were surfacing random world-news. Multiple keywords/concepts
+    are OR'd within each group; a keyword group and a concept group combine with
+    AND (ER's default across param types). All current callers pass keywords only.
+    """
+    # Lists (not a space-joined string): ER treats "a b" as a phrase, but ["a","b"]
+    # with keywordOper="or" as the intended any-of filter. Verified against the live
+    # API — the joined-string form collapses results to near-miss phrase matches.
+    if keywords:
+        body["keyword"] = list(keywords)
+        if len(keywords) > 1:
+            body["keywordOper"] = "or"
+    if concepts:
+        body["conceptUri"] = list(concepts)
+        if len(concepts) > 1:
+            body["conceptOper"] = "or"
+
+
 async def search_articles(
     *,
     keywords: list[str] | None = None,
     concepts: list[str] | None = None,
     lang: str = "eng",
     count: int = 20,
+    sort_by: str = "date",
+    date_start: str | None = None,
 ) -> list[NewsArticle]:
     """On-demand article search via /article/getArticles.
 
     `concepts` are Event Registry concept URIs and are more precise than
     keyword strings (preferred for issuer/entity matching, §14.1).
-    `keywords` are space-joined and matched with OR logic as a fallback.
+    Multiple `keywords`/`concepts` are OR'd (see _apply_query_filter).
     At least one of keywords or concepts must be non-empty.
+
+    `sort_by` is Event Registry's `articlesSortBy`: "date" (newest-first) or
+    "rel" (most on-topic). `date_start` (YYYY-MM-DD) bounds results to a recent
+    window — the holdings scan passes ~30 days ago so it only surfaces the last
+    month's news about a held stock.
     """
     body: dict[str, Any] = {
         "resultType": "articles",
         "dataType": ["news"],
         "lang": lang,
         "articlesCount": count,
-        "articlesSortBy": "date",
+        "articlesSortBy": sort_by,
         "includeArticleSentiment": True,
     }
-    if keywords:
-        body["keyword"] = " ".join(keywords)
-        body["keywordOper"] = "or"
-    if concepts:
-        body["conceptUri"] = concepts
+    if date_start:
+        body["dateStart"] = date_start
+    _apply_query_filter(body, keywords, concepts)
     data = await _post("/article/getArticles", body)
     results: list[dict[str, Any]] = (data.get("articles") or {}).get("results") or []
     log.info("news.search", keyword_count=len(keywords or []), concept_count=len(concepts or []), results=len(results))
@@ -169,7 +202,7 @@ async def get_recent_activity(
     keywords: list[str] | None = None,
     concepts: list[str] | None = None,
     lang: str = "eng",
-    count: int = 100,
+    count: int = 50,
 ) -> tuple[list[NewsArticle], str | None]:
     """Poll the near-real-time feed, advancing the newestUri cursor.
 
@@ -177,25 +210,34 @@ async def get_recent_activity(
     pass the cursor returned by the previous call for gapless, duplicate-free
     coverage (§14.1). Returns (articles, new_newest_uri).
 
+    The feed is Event Registry's minute stream at `/minuteStreamArticles`
+    (NOT `/article/getRecentActivity`, which the API rejects). It honours the
+    same `keyword`/`conceptUri` filters as getArticles, so the global
+    watchlist keeps the firehose down — important on a token budget. Its
+    request params are stream-specific (`recentActivityArticles…`) and the
+    `newestUri` cursor is returned as `{"news": "<id>"}`, normalised here to
+    the bare id string so the caller can persist it directly.
+
     Caller is responsible for enforcing the 5-concurrent-request limit (§14.2
     F2) — the single sequential poller design (TASK-029) handles this.
     """
     body: dict[str, Any] = {
         "lang": lang,
-        "articlesCount": count,
-        "includeArticleSentiment": True,
+        "recentActivityArticlesMaxArticleCount": count,
+        "recentActivityArticlesIncludeArticleSentiment": True,
     }
     if newest_uri:
         body["updatesAfterNewsUri"] = newest_uri
-    if keywords:
-        body["keyword"] = " ".join(keywords)
-        body["keywordOper"] = "or"
-    if concepts:
-        body["conceptUri"] = concepts
-    data = await _post("/article/getRecentActivity", body)
+    _apply_query_filter(body, keywords, concepts)
+    data = await _post("/minuteStreamArticles", body)
     feed: dict[str, Any] = data.get("recentActivityArticles") or {}
     articles = _parse_articles(feed.get("activity") or [])
-    new_cursor: str | None = feed.get("newestUri") or None
+    raw_cursor = feed.get("newestUri")
+    # newestUri comes back as {"news": "<id>"}; normalise to the bare id string.
+    if isinstance(raw_cursor, dict):
+        new_cursor: str | None = raw_cursor.get("news") or None
+    else:
+        new_cursor = raw_cursor or None
     log.info("news.recent_activity", fetched=len(articles), new_cursor=new_cursor)
     return articles, new_cursor
 

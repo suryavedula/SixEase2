@@ -38,28 +38,90 @@ log = get_logger(__name__)
 # Widgets the orchestrator may summon. Everything except BookList is client-scoped
 # and receives the resolved client_id injected server-side.
 _CLIENT_SCOPED: set[str] = {
+    "Client360",
+    "PortfolioView",
+    "BeforeAfter",
+    "MeetingPrep",
+    "EmailDraft",
     "DnaCard",
-    "HoldingsTable",
     "AllocationDonut",
     "DriftBars",
     "FitHeatmap",
     "ConflictsList",
     "SectorTreemap",
-    "SwapBeforeAfter",
 }
-_ALLOWED: set[str] = _CLIENT_SCOPED | {"BookList"}
+_ALLOWED: set[str] = _CLIENT_SCOPED | {"ClientBook"}
 _MAX_WIDGETS = 4
 
+_BOOK_MANDATES = {"defensive": "Defensive", "balanced": "Balanced", "growth": "Growth"}
+_BOOK_SORTS = {"fit_desc", "fit_asc", "conflicts_desc", "name"}
+
+
+def _sanitize_clientbook_props(props: Any) -> dict:
+    """Whitelist the ClientBook filter props — the model sets them, we validate.
+
+    Anything outside the known keys / value ranges is dropped, so a malformed or
+    adversarial widget spec can never inject arbitrary props into the client.
+    """
+    if not isinstance(props, dict):
+        return {}
+    out: dict[str, Any] = {}
+
+    mandate = props.get("mandate")
+    if isinstance(mandate, str) and mandate.lower() in _BOOK_MANDATES:
+        out["mandate"] = _BOOK_MANDATES[mandate.lower()]
+
+    if props.get("hasConflicts") is True:
+        out["hasConflicts"] = True
+
+    for key in ("minFit", "maxFit"):
+        val = props.get(key)
+        if isinstance(val, (int, float)) and not isinstance(val, bool) and 0 <= val <= 100:
+            out[key] = float(val)
+
+    sort_by = props.get("sortBy")
+    if isinstance(sort_by, str) and sort_by in _BOOK_SORTS:
+        out["sortBy"] = sort_by
+
+    title = props.get("title")
+    if isinstance(title, str) and title.strip():
+        out["title"] = title.strip()[:60]
+
+    return out
+
 _CATALOG = """\
-- DnaCard — the client's values, exclusions, tilts and open promises (their "DNA").
-- HoldingsTable — every holding in the portfolio with weight and fit.
-- AllocationDonut — current sub-asset-class allocation vs the mandate target.
+- Client360 — RICH client snapshot: profile + full DNA (values, red-lines, context, life
+  events) + a portfolio-health strip. PREFER THIS for "show/open <client>" or any profile
+  request — it is the primary client view.
+- PortfolioView — RICH portfolio analysis: holdings table (weight, CIO view, values-fit,
+  risk flags) + an AI swap proposal (before/after, human-approval). PREFER THIS for
+  portfolio / holdings / allocation / drift / swap requests.
+- BeforeAfter — the pitch screen: a before/after portfolio proving values are honoured while
+  staying 100% within CIO (mandate-neutral weights, fit lift, per-swap deltas, human-approval).
+  USE for "before/after", "what changed", "show the personalisation for <client>", "values vs CIO".
+- MeetingPrep — a meeting-prep brief: a suggested agenda built from the client's DNA
+  (life events, open promises, values) plus key facts. USE for "prep for my meeting with
+  <client>", "what should I cover with <client>".
+- EmailDraft — the grounded client message draft: editable text, a tone toggle (re-writes
+  via the LLM), the locked compliance facts, and approve/send-test. USE for "draft an
+  email/message to <client>", "write to <client>", "reach out to <client>".
+- DnaCard — compact DNA-only card (use only if the user explicitly wants just the DNA).
+- AllocationDonut — sub-asset-class allocation vs target, as a donut.
 - DriftBars — drift per sub-asset-class, flagging ±2pp breaches.
-- FitHeatmap — per-holding values-fit heatmap (where the portfolio aligns with DNA).
+- FitHeatmap — per-holding values-fit heatmap.
 - ConflictsList — holdings that violate the client's stated exclusions.
 - SectorTreemap — sector exposure of the portfolio.
-- SwapBeforeAfter — a proposed instrument swap, before vs after.
-- BookList — all clients ranked by portfolio fit (use when no single client is in focus)."""
+- ClientBook — the RM's client book as a FILTERABLE table. USE THIS for "show me the
+  clients", "my book", and any book-level filter/sort ("which clients have conflicts", "my
+  Growth clients", "lowest-fit clients", "clients below 60 fit"). It takes optional props
+  (set the ones the request implies, leave the rest out):
+    • mandate: "Defensive" | "Balanced" | "Growth"
+    • hasConflicts: true  (only clients with values conflicts)
+    • minFit / maxFit: number 0–100  (values-fit range; "below 60" → maxFit 60)
+    • sortBy: "fit_desc" | "fit_asc" | "conflicts_desc" | "name"  (e.g. "worst fit" → fit_asc)
+    • title: a short label describing the filter, e.g. "Growth clients with conflicts"
+  Example: "which growth clients have conflicts?" →
+    {"component":"ClientBook","props":{"mandate":"Growth","hasConflicts":true,"sortBy":"conflicts_desc","title":"Growth clients with conflicts"}}"""
 
 
 # --------------------------------------------------------------------------- #
@@ -300,13 +362,16 @@ HARD RULES:
 1. If the RM asks to SEE, SHOW, PULL UP, OPEN or DISPLAY something (a client, their \
 profile/DNA, holdings, portfolio, allocation, drift, conflicts) — or your reply says \
 "here is/here's …" — you MUST render the matching widget(s). Never promise a view in prose \
-without rendering it. "Show <client> profile" → render DnaCard (and usually HoldingsTable).
+without rendering it. "Show <client> profile" → render Client360. "Portfolio / holdings / \
+swap" → render PortfolioView.
 2. You NEVER write specific portfolio figures (CHF amounts, percentages, fit scores) in \
 your reply prose — if the RM needs numbers, render the widget that carries them. You MAY \
 speak qualitatively about the client's values, exclusions, promises and life events.
 3. A purely conversational turn (a greeting or a clarifying question) may have 0 widgets. \
 Never render more than {_MAX_WIDGETS}.
-4. Do NOT put a client id in props — the server injects it. Use empty props: {{}}.
+4. Do NOT put a client id in props — the server injects it for client-scoped widgets, so \
+use empty props {{}} for those. The ONE exception is ClientBook: set its documented filter \
+props (mandate / hasConflicts / minFit / maxFit / sortBy / title) to match the request.
 5. Set "client" to the FULL name of the client this turn is about (correcting any \
 misspelling against the roster), or null if the turn is book-level / general. Always set \
 it when you render a client-scoped widget.
@@ -325,23 +390,16 @@ def _fallback(query: str, focus: Client | None) -> OrchestrateResponse:
     specs: list[WidgetSpec] = []
     if focus is not None:
         cid = str(focus.id)
-        if any(w in lower for w in ("portfolio", "allocation", "drift", "holding", "rebalanc")):
-            specs = [
-                WidgetSpec(component="AllocationDonut", props={"clientId": cid}),
-                WidgetSpec(component="DriftBars", props={"clientId": cid}),
-                WidgetSpec(component="FitHeatmap", props={"clientId": cid}),
-            ]
+        if any(w in lower for w in ("portfolio", "allocation", "drift", "holding", "swap", "rebalanc")):
+            specs = [WidgetSpec(component="PortfolioView", props={"clientId": cid})]
         else:
-            specs = [
-                WidgetSpec(component="DnaCard", props={"clientId": cid}),
-                WidgetSpec(component="HoldingsTable", props={"clientId": cid}),
-            ]
+            specs = [WidgetSpec(component="Client360", props={"clientId": cid})]
         reply = (
             f"I couldn't reach the analysis model just now, so here's {focus.name}'s "
             "data directly. Try again in a moment for a written read-out."
         )
     elif "book" in lower or "client" in lower:
-        specs = [WidgetSpec(component="BookList", props={})]
+        specs = [WidgetSpec(component="ClientBook", props={})]
         reply = "The model is unreachable right now — here's your book in the meantime."
     else:
         reply = (
@@ -403,11 +461,14 @@ async def orchestrate(
         if w.component not in _ALLOWED:
             log.info("orchestrate.widget_rejected", component=w.component)
             continue
-        props = dict(w.props)
         if w.component in _CLIENT_SCOPED:
             if focus_id is None:
                 continue  # client-scoped widget with no client in focus — drop
-            props["clientId"] = focus_id  # server owns the id; never trust the model's
+            props = {"clientId": focus_id}  # server owns the id; never trust the model's
+        elif w.component == "ClientBook":
+            props = _sanitize_clientbook_props(w.props)  # filter props are whitelisted
+        else:
+            props = {}
         specs.append(WidgetSpec(component=w.component, props=props))
 
     log.info(

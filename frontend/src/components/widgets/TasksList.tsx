@@ -1,5 +1,6 @@
 import { useState } from "react";
-import type { TaskWithClient } from "../../api/tasks";
+import { extractBrief, extractDraftRef, type TaskWithClient } from "../../api/tasks";
+import { useCanvasActions } from "../shell/CanvasActions";
 
 const MODE_CHIP: Record<string, string> = {
   Auto: "bg-violet/10 text-violet border-violet/30",
@@ -17,6 +18,7 @@ const SOURCE_LABEL: Record<string, string> = {
   alert: "Alert",
   note: "Note",
   promise: "Promise",
+  swap: "Swap",
 };
 
 function taskAge(iso: string): string {
@@ -90,12 +92,19 @@ function TaskCard({
   const sourceLabel = SOURCE_LABEL[task.source ?? ""] ?? task.source ?? "—";
 
   const hasResult = task.status === "done" && task.result != null;
-  const resultSummary =
-    hasResult && typeof task.result?.summary === "string"
-      ? task.result.summary
-      : hasResult
-        ? JSON.stringify(task.result).slice(0, 200)
-        : null;
+  const draftRef = extractDraftRef(task.result);
+  const brief = extractBrief(task.result);
+  const resultSummary = hasResult ? brief.summary : null;
+  const citationCount = brief.citations.length;
+  const prov = brief.provenance;
+  const provLabel = prov
+    ? [
+        prov.notes_read != null ? `${prov.notes_read} notes` : null,
+        prov.articles_fetched != null ? `${prov.articles_fetched} articles` : null,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : "";
 
   return (
     <div className="space-y-2 rounded-xl border border-border bg-panel p-3">
@@ -154,17 +163,27 @@ function TaskCard({
             onClick={() => setResultOpen((o) => !o)}
             className="flex w-full items-center justify-between px-2.5 py-1.5 text-left"
           >
-            <span className="text-[10px] font-semibold text-muted">
-              Research brief
+            <span className="flex items-center gap-1.5 text-[10px] font-semibold text-muted">
+              {draftRef ? "Prepared answer" : "Research brief"}
+              {citationCount > 0 && (
+                <span className="rounded bg-blue/15 px-1 text-[9px] font-medium text-blue">
+                  {citationCount} source{citationCount === 1 ? "" : "s"}
+                </span>
+              )}
             </span>
-            <span className="text-[10px] text-dim">
-              {resultOpen ? "▲" : "▼"}
-            </span>
+            <span className="text-[10px] text-dim">{resultOpen ? "▲" : "▼"}</span>
           </button>
           {resultOpen && (
-            <p className="border-t border-border px-2.5 pb-2 pt-1.5 text-[11px] leading-relaxed text-muted">
-              {resultSummary}
-            </p>
+            <div className="space-y-1.5 border-t border-border px-2.5 pb-2 pt-1.5">
+              <p className="text-[11px] leading-relaxed text-muted">
+                {resultSummary ?? "Completed — open the full brief to view details."}
+              </p>
+              {provLabel && (
+                <p className="text-[9.5px] uppercase tracking-wider text-dim">
+                  Grounded in {provLabel}
+                </p>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -196,6 +215,7 @@ function ActionButtons({
   onPromote,
   onDiscard,
 }: ActionButtonsProps) {
+  const { addSpecs } = useCanvasActions();
   if (task.status === "closed") return null;
 
   const discard = onDiscard ? (
@@ -232,6 +252,29 @@ function ActionButtons({
   }
 
   if (task.status === "done" && task.result != null) {
+    // Email auto-draft → open the prepared answer directly in the composer.
+    const draftRef = extractDraftRef(task.result);
+    if (draftRef && task.client_id) {
+      return (
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              addSpecs([
+                {
+                  component: "EmailDraft",
+                  props: { clientId: task.client_id, draftId: draftRef.draft_id },
+                },
+              ])
+            }
+            className="rounded-lg bg-blue/15 px-2.5 py-1 text-[11px] font-medium text-blue transition-colors hover:bg-blue/25"
+          >
+            View answer
+          </button>
+          {discard}
+        </div>
+      );
+    }
     return (
       <div className="flex gap-2">
         <button
@@ -239,7 +282,7 @@ function ActionButtons({
           onClick={() => onPromote?.(task)}
           className="rounded-lg bg-violet/15 px-2.5 py-1 text-[11px] font-medium text-violet transition-colors hover:bg-violet/25"
         >
-          Promote
+          Open brief
         </button>
         {discard}
       </div>

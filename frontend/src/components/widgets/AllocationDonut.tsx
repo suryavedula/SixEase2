@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { chfCompact } from "../../lib/format";
 import { getPortfolioAllocation } from "../../api/portfolio";
 import type { AllocationResponse, SACRow } from "../../api/portfolio";
 
@@ -44,11 +45,6 @@ function arcPath(startAngle: number, endAngle: number): string {
   ].join(" ");
 }
 
-function chfCompact(v: number): string {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `${(v / 1_000).toFixed(0)}K`;
-  return String(Math.round(v));
-}
 
 interface AllocationDonutProps {
   clientId: string;
@@ -73,7 +69,7 @@ export function AllocationDonut({ clientId }: AllocationDonutProps) {
 
   if (status.kind === "loading") {
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 space-y-3">
+      <div className="rounded-2xl border border-border bg-panel p-4 space-y-3">
         <div className="h-5 w-32 animate-pulse rounded bg-panel3" />
         <div className="h-[260px] w-[260px] mx-auto animate-pulse rounded-full bg-panel3" />
       </div>
@@ -82,7 +78,7 @@ export function AllocationDonut({ clientId }: AllocationDonutProps) {
 
   if (status.kind === "error") {
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 text-[13px]">
+      <div className="rounded-2xl border border-border bg-panel p-4 text-[13px]">
         <p className="text-muted">Could not load allocation.</p>
         <p className="mt-1 text-dim text-[11px]">{status.message}</p>
       </div>
@@ -104,7 +100,7 @@ export function AllocationDonut({ clientId }: AllocationDonutProps) {
   });
 
   return (
-    <div className="rounded-[14px] border border-border bg-panel p-4">
+    <div className="rounded-2xl border border-border bg-panel p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="font-semibold text-[15px] text-text">Allocation</span>
         <span className="text-[12px] text-muted">{data.mandate}</span>
@@ -112,8 +108,7 @@ export function AllocationDonut({ clientId }: AllocationDonutProps) {
 
       {rows.length === 0 ? (
         <p className="text-[13px] text-muted">
-          No positions seeded. Run{" "}
-          <code className="font-mono text-dim">POST /admin/seed/portfolio</code> first.
+          No positions to show for this client yet.
         </p>
       ) : (
         <div className="flex flex-col items-center">
@@ -167,7 +162,13 @@ export function AllocationDonut({ clientId }: AllocationDonutProps) {
                 <span className="flex-1 truncate text-muted">{row.sub_asset_class}</span>
                 <span className="font-mono text-dim">{row.current_pct.toFixed(1)}%</span>
                 {row.breach && (
-                  <span className="text-red font-bold">!</span>
+                  <span
+                    className="text-red font-bold"
+                    title="Drift breach"
+                    aria-label="drift breach"
+                  >
+                    !
+                  </span>
                 )}
               </div>
             ))}

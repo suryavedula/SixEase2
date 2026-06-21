@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { SkeletonCard } from "./SkeletonCard";
 import { getClientDna } from "../../api/dna";
 import type { DnaItem, DnaResponse, DnaSource } from "../../api/dna";
 import { SourcesFooter, dnaSourceToDisplaySource } from "./SourcesFooter";
@@ -16,6 +17,14 @@ function confidenceDot(confidence: number): string {
   if (confidence >= 0.85) return "text-green";
   if (confidence >= 0.65) return "text-amber";
   return "text-dim";
+}
+
+// Text label paired with the colour dot so confidence is not signalled by colour
+// alone (colorblind safety / screen readers).
+function confidenceLabel(confidence: number): string {
+  if (confidence >= 0.85) return "High confidence";
+  if (confidence >= 0.65) return "Medium confidence";
+  return "Low confidence";
 }
 
 function mandateBadgeClass(mandate: string): string {
@@ -66,7 +75,13 @@ function ItemSection({
                 onClick={() => onToggle(isOpen ? null : key)}
                 className={`inline-flex items-center gap-1 rounded border px-2 py-0.5 text-[12px] transition-colors ${chipClass} ${isOpen ? "ring-1 ring-current" : ""}`}
               >
-                <span className={`text-[8px] ${confidenceDot(item.confidence)}`}>●</span>
+                <span
+                  className={`text-[8px] ${confidenceDot(item.confidence)}`}
+                  title={confidenceLabel(item.confidence)}
+                  aria-label={confidenceLabel(item.confidence)}
+                >
+                  ●
+                </span>
                 {chipLabel}
               </button>
               {isOpen && item.source_note_ids.length > 0 && (
@@ -118,23 +133,17 @@ export function DnaCard({ clientId }: DnaCardProps) {
   }, [clientId]);
 
   if (status.kind === "loading") {
-    return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 space-y-3">
-        <div className="h-5 w-40 animate-pulse rounded bg-panel3" />
-        <div className="h-3 w-full animate-pulse rounded bg-panel3" />
-        <div className="h-3 w-3/4 animate-pulse rounded bg-panel3" />
-      </div>
-    );
+    return <SkeletonCard lines={2} />;
   }
 
   if (status.kind === "error") {
     const is404 = status.message.includes("404");
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 text-[13px]">
+      <div className="rounded-2xl border border-border bg-panel p-4 text-[13px]">
         {is404 ? (
           <p className="text-muted">
-            DNA not yet extracted — run{" "}
-            <code className="font-mono text-dim">POST /admin/seed/dna</code> to populate.
+            DNA not yet extracted for this client — their identity hasn’t been
+            synthesised from the CRM notes yet.
           </p>
         ) : (
           <>
@@ -150,7 +159,7 @@ export function DnaCard({ clientId }: DnaCardProps) {
   const sourceMap = buildSourceMap(data.sources);
 
   return (
-    <div className="rounded-[14px] border border-border bg-panel p-4">
+    <div className="rounded-2xl border border-border bg-panel p-4">
       {/* Header */}
       <div className="flex items-center gap-2 mb-2">
         <span className="text-[18px]">◆</span>

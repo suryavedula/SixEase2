@@ -244,7 +244,8 @@ async def get_client_news(
 # TASK-035 — Alert lifecycle write endpoints (AL7 / UC-26)
 # ---------------------------------------------------------------------------
 
-_VALID_PATCH_STATUSES = frozenset({"acted", "dismissed", "snoozed"})
+# "open" is allowed so the UI can reopen a just-dismissed/snoozed alert (Undo).
+_VALID_PATCH_STATUSES = frozenset({"open", "acted", "dismissed", "snoozed"})
 
 
 class AlertTransitionRequest(BaseModel):
@@ -277,7 +278,8 @@ async def transition_alert(
 ) -> AlertItem:
     """Transition an alert through its lifecycle (AL7 / TASK-035).
 
-    Allowed status values: acted | dismissed | snoozed
+    Allowed status values: open | acted | dismissed | snoozed
+    ("open" reopens a dismissed/snoozed alert — the UI's Undo affordance.)
     Use POST /convert to set the converted status.
     dismissed_reason is persisted as a calibration signal (UC-26).
     """

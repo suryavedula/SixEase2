@@ -1,4 +1,3 @@
-import { ThemeToggle } from "../components/shell/ThemeToggle";
 import { usePrefs, type DefaultView, type WidgetDensity } from "./PrefsProvider";
 
 const DEFAULT_VIEW_OPTIONS: { value: DefaultView; label: string }[] = [
@@ -63,12 +62,6 @@ export function PrefsPanel() {
               </button>
             ))}
           </div>
-        </div>
-
-        {/* Theme */}
-        <div>
-          <div className="mb-2 text-[12px] font-medium text-muted">Theme</div>
-          <ThemeToggle />
         </div>
       </div>
     </div>

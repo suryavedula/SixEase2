@@ -11,6 +11,7 @@ interchangeably via LLM_PROVIDER config. Public API:
 """
 import json
 import re
+from datetime import datetime, timezone
 from typing import TypeVar
 
 from openai import AsyncOpenAI
@@ -19,6 +20,7 @@ from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_ex
 
 from app.config import get_settings
 from app.logging import get_logger
+from app.redis_client import redis_client
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -26,6 +28,79 @@ settings = get_settings()
 log = get_logger(__name__)
 
 _client: AsyncOpenAI | None = None
+
+
+class BudgetExhausted(Exception):
+    """Raised when the hosted-LLM token cap for the current UTC day is reached.
+
+    Subclasses `Exception` so existing `except Exception` handlers in callers
+    (news_fanout re-enqueue, orchestrate fallback, agents state["error"]) route it
+    as a soft, recoverable error — work pauses until the daily meter resets, the
+    zero-LLM Change Radar keeps running, and nothing silently switches engines
+    (no-fallbacks rule). See routers/admin.py `GET /admin/budget` for the readout.
+    """
+
+
+# --- Token budget meter (always-on safety for the proactive loops) ----------
+# Only hosted/paid providers are metered; local Ollama is free and never gated.
+# The meter lives in Redis under a per-UTC-day key so it survives restarts and
+# resets daily. `settings.phoeniqs_budget_tokens <= 0` disables the cap entirely.
+_FREE_PROVIDERS = {"ollama"}
+
+
+def _is_metered() -> bool:
+    return settings.llm.provider not in _FREE_PROVIDERS
+
+
+def _budget_key() -> str:
+    day = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    return f"llm:budget:{settings.llm.provider}:{day}"
+
+
+async def budget_status() -> dict:
+    """Spent / cap / remaining for the active provider's current UTC day."""
+    cap = settings.phoeniqs_budget_tokens
+    metered = _is_metered()
+    spent = int(await redis_client.get(_budget_key()) or 0) if metered else 0
+    remaining = None if (not metered or cap <= 0) else max(0, cap - spent)
+    return {
+        "provider": settings.llm.provider,
+        "metered": metered,
+        "cap": cap,
+        "spent": spent,
+        "remaining": remaining,
+        "exhausted": metered and cap > 0 and spent >= cap,
+    }
+
+
+async def _budget_check() -> None:
+    """Raise BudgetExhausted if the metered provider is at/over its daily cap."""
+    cap = settings.phoeniqs_budget_tokens
+    if not _is_metered() or cap <= 0:
+        return
+    spent = int(await redis_client.get(_budget_key()) or 0)
+    if spent >= cap:
+        log.warning("llm.budget_exhausted", provider=settings.llm.provider, spent=spent, cap=cap)
+        raise BudgetExhausted(
+            f"{settings.llm.provider} token cap reached for today ({spent}/{cap})"
+        )
+
+
+async def _budget_record(total_tokens: int) -> None:
+    """Add this call's token usage to the daily meter (metered providers only)."""
+    if not _is_metered() or total_tokens <= 0:
+        return
+    key = _budget_key()
+    new_total = await redis_client.incrby(key, total_tokens)
+    await redis_client.expire(key, 172800)  # 2-day TTL; keys self-clean
+    cap = settings.phoeniqs_budget_tokens
+    warn_pct = settings.phoeniqs_budget_warn_pct
+    if cap > 0 and warn_pct > 0:
+        threshold = cap * warn_pct / 100
+        if (new_total - total_tokens) < threshold <= new_total:
+            log.warning(
+                "llm.budget_warn", provider=settings.llm.provider, spent=new_total, cap=cap, pct=warn_pct
+            )
 
 # Reasoning models (e.g. Phoeniqs `inference-gpt-oss-120b`) spend completion-token
 # budget on hidden reasoning *before* emitting any content. A `max_tokens` sized
@@ -66,14 +141,23 @@ async def chat(
     temperature: float = 0.2,
     max_tokens: int = 1024,
 ) -> str:
-    """Single-turn chat completion; returns the assistant message content."""
+    """Single-turn chat completion; returns the assistant message content.
+
+    Guarded by the daily token budget (metered providers only): raises
+    BudgetExhausted *before* spending if the cap is hit, and records actual
+    `usage` after a successful call.
+    """
     client = get_client()
+    await _budget_check()
     resp = await client.chat.completions.create(
         model=model or settings.llm.model,
         messages=messages,
         temperature=temperature,
         max_tokens=_effective_max_tokens(max_tokens),
     )
+    usage = getattr(resp, "usage", None)
+    if usage is not None:
+        await _budget_record(getattr(usage, "total_tokens", 0) or 0)
     return resp.choices[0].message.content or ""
 
 

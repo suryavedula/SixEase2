@@ -89,8 +89,9 @@ def _build_provenance(draft_text: str, fact_sheet: dict) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _SYSTEM_TEMPLATE = """\
-You are a private wealth advisor drafting a personalised client communication on behalf \
-of a relationship manager. You translate locked advisory facts into warm, accurate prose.
+You are drafting a personalised client communication for a relationship manager to \
+review and send. You translate locked advisory facts into warm, accurate prose — the \
+relationship manager always approves before anything reaches the client.
 
 STYLE PRESET: {preset}
 

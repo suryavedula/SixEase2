@@ -7,4 +7,6 @@ echo "[entrypoint] alembic upgrade head"
 alembic upgrade head
 
 echo "[entrypoint] starting uvicorn"
-exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+# --timeout-graceful-shutdown bounds shutdown so a long-lived SSE connection
+# (GET /radar/stream, EPIC-08) can never hang a --reload or container restart.
+exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 10

@@ -12,12 +12,13 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.logging import get_logger
-from app.models.derived import ClientWatchlist, EnrichedHolding, SwapProposal
+from app.models.derived import ClientWatchlist, EnrichedHolding, SwapProposal, Task
+from app.models.enums import ExecutionMode, TaskStatus
 from app.models.source import CIORecommendation, Client, MandateStrategy, Position
 
 router = APIRouter(prefix="/clients", tags=["portfolio"])
@@ -61,11 +62,24 @@ async def get_portfolio_fit(
     if client is None:
         raise HTTPException(status_code=404, detail="Client not found")
 
+    # A held position's CIO rationale is THAT instrument's own row, matched by its
+    # natural key (ISIN, then Valor) — never a sibling's. Matching on industry_group
+    # would pull an arbitrary same-group instrument's view (e.g. NVIDIA's "foundry"
+    # line onto Microsoft, or a luxury name's onto Amazon). No row → null → "—".
     cio_view_sq = (
         select(CIORecommendation.cio_view)
         .where(
-            CIORecommendation.industry_group == Position.industry_group,
-            CIORecommendation.rating == "BUY",
+            or_(
+                and_(
+                    Position.isin.isnot(None),
+                    CIORecommendation.isin == Position.isin,
+                ),
+                and_(
+                    Position.isin.is_(None),
+                    Position.valor.isnot(None),
+                    CIORecommendation.valor == Position.valor,
+                ),
+            )
         )
         .limit(1)
         .correlate(Position)
@@ -278,6 +292,111 @@ async def get_portfolio_swaps(
         total_proposals=total,
         positions=positions,
         kept_positions=kept_positions,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Swap decision (HITL) — persist the RM's approve/reject as a Task
+# ---------------------------------------------------------------------------
+
+
+class SwapDecisionRequest(BaseModel):
+    decision: str  # "approved" | "rejected"
+    notes: str | None = None
+
+
+class SwapDecisionResponse(BaseModel):
+    task_id: str
+    status: str
+    decision: str
+    proposal_count: int
+
+
+@router.post(
+    "/{client_id}/portfolio/swaps/decision",
+    response_model=SwapDecisionResponse,
+)
+async def decide_portfolio_swaps(
+    client_id: uuid.UUID,
+    body: SwapDecisionRequest,
+    session: AsyncSession = Depends(get_session),
+) -> SwapDecisionResponse:
+    """Persist the RM's approve/reject decision on a client's swap proposals.
+
+    Human-in-the-loop: this NEVER executes a trade. It records the decision as a
+    MANUAL Task (source="swap") so it survives reloads and surfaces in the Action
+    Center for follow-up. The current swap set is snapshotted into the task result.
+    """
+    decision = body.decision.strip().lower()
+    if decision not in ("approved", "rejected"):
+        raise HTTPException(
+            status_code=422, detail="decision must be 'approved' or 'rejected'"
+        )
+
+    client = await session.get(Client, client_id)
+    if client is None:
+        raise HTTPException(status_code=404, detail="Client not found")
+
+    # Snapshot the real swap proposals (candidate_isin not null) into the record.
+    rows_result = await session.execute(
+        select(SwapProposal, Position, CIORecommendation)
+        .join(Position, SwapProposal.holding_id == Position.id)
+        .outerjoin(
+            CIORecommendation,
+            SwapProposal.candidate_isin == CIORecommendation.isin,
+        )
+        .where(
+            and_(
+                Position.client_id == client_id,
+                SwapProposal.candidate_isin.is_not(None),
+            )
+        )
+        .order_by(SwapProposal.fit_gain.desc().nulls_last())
+    )
+    snapshot = [
+        {
+            "position_id": str(position.id),
+            "issuer": position.issuer,
+            "security": position.security,
+            "candidate_isin": proposal.candidate_isin,
+            "candidate_valor": proposal.candidate_valor,
+            "candidate_issuer": cio.issuer if cio else None,
+            "fit_gain": proposal.fit_gain,
+        }
+        for proposal, position, cio in rows_result.all()
+    ]
+
+    verb = "Approved" if decision == "approved" else "Rejected"
+    task = Task(
+        client_id=client.id,
+        source="swap",
+        execution_mode=ExecutionMode.MANUAL,
+        status=TaskStatus.CREATED,
+        title=f"{verb} swaps — {client.name}",
+        result={
+            "decision": decision,
+            "notes": body.notes,
+            "proposals": snapshot,
+            "proposal_count": len(snapshot),
+        },
+    )
+    session.add(task)
+    await session.commit()
+    await session.refresh(task)
+
+    log.info(
+        "swap.decision",
+        client_id=str(client_id),
+        task_id=str(task.id),
+        decision=decision,
+        proposal_count=len(snapshot),
+    )
+
+    return SwapDecisionResponse(
+        task_id=str(task.id),
+        status=task.status.value if hasattr(task.status, "value") else task.status,
+        decision=decision,
+        proposal_count=len(snapshot),
     )
 
 

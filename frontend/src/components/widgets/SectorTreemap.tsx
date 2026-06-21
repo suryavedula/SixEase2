@@ -123,7 +123,7 @@ export function SectorTreemap({ clientId }: SectorTreemapProps) {
 
   if (status.kind === "loading") {
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 space-y-3">
+      <div className="rounded-2xl border border-border bg-panel p-4 space-y-3">
         <div className="h-5 w-32 animate-pulse rounded bg-panel3" />
         <div className="h-[280px] w-full animate-pulse rounded bg-panel3" />
       </div>
@@ -132,7 +132,7 @@ export function SectorTreemap({ clientId }: SectorTreemapProps) {
 
   if (status.kind === "error") {
     return (
-      <div className="rounded-[14px] border border-border bg-panel p-4 text-[13px]">
+      <div className="rounded-2xl border border-border bg-panel p-4 text-[13px]">
         <p className="text-muted">Could not load sector treemap.</p>
         <p className="mt-1 text-dim text-[11px]">{status.message}</p>
       </div>
@@ -153,7 +153,7 @@ export function SectorTreemap({ clientId }: SectorTreemapProps) {
   });
 
   return (
-    <div className="rounded-[14px] border border-border bg-panel p-4">
+    <div className="rounded-2xl border border-border bg-panel p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="font-semibold text-[15px] text-text">Sector Treemap</span>
         <div className="flex items-center gap-2 text-[11px]">
@@ -165,8 +165,7 @@ export function SectorTreemap({ clientId }: SectorTreemapProps) {
 
       {sectors.length === 0 ? (
         <p className="text-[13px] text-muted">
-          No holdings. Run{" "}
-          <code className="font-mono text-dim">POST /admin/seed/portfolio</code> first.
+          No holdings to show for this client yet.
         </p>
       ) : (
         <svg

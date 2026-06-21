@@ -11,16 +11,20 @@ Seeding order: seed/portfolio → seed/dna → seed/watchlist
 """
 
 import uuid
+from collections import Counter
 
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import get_settings
+from app.loaders.news_match import significant_name_tokens
 from app.logging import get_logger
 from app.models.derived import ClientDNA, ClientWatchlist
 from app.models.source import Client, Position
 
 log = get_logger(__name__)
+settings = get_settings()
 
 
 async def build_watchlists(
@@ -101,18 +105,54 @@ async def build_watchlists(
 
 
 async def get_global_index(session: AsyncSession) -> dict:
-    """Return the union of all clients' keywords for the news poller (§14.2 F1).
+    """Return the global news-firehose filter for the poller (§14.2 F1).
+
+    Event Registry caps the keyword count per query (hackathon tier = 80), so the
+    naive union of every client's keywords (issuer + ticker + ISIN per holding, ~500
+    tokens) is rejected. We instead build the filter from **issuer names + DNA themes
+    only** — ISIN/ticker tokens almost never appear in news prose — and rank by
+    *cross-client breadth*: a name held by many clients is the highest-value filter
+    because news on it fans out to many clients (the multi-client events the radar is
+    built around). The list is truncated to `news_max_keywords`; what's dropped is
+    logged (no silent truncation).
 
     Returns {"keywords": [...], "client_count": N, "keyword_count": N}.
     """
     rows = (await session.execute(select(ClientWatchlist))).scalars().all()
-    all_keywords = list(
-        dict.fromkeys(kw for row in rows for kw in (row.keywords or []))
-    )
+
+    # Count how many clients carry each issuer name / theme (breadth = relevance).
+    # Issuer names with no distinctive token ("Swiss Bank", "US Treasury", "ZKB Bond")
+    # are dropped — as news-search terms they only return firehose noise. DNA themes
+    # are kept verbatim (curated, may be short like "esg").
+    breadth: Counter[str] = Counter()
+    for row in rows:
+        names: set[str] = set()
+        for entity in row.entities or []:
+            issuer = entity.get("issuer")
+            if issuer and significant_name_tokens(issuer):
+                names.add(issuer)
+        for tag in row.themes or []:
+            if tag:
+                names.add(tag)
+        breadth.update(names)
+
+    # Most-widely-held first, then alphabetical for stable, reproducible ordering.
+    ranked = [kw for kw, _ in sorted(breadth.items(), key=lambda kv: (-kv[1], kv[0]))]
+    limit = settings.news_max_keywords
+    keywords = ranked[:limit]
+    if len(ranked) > limit:
+        log.info(
+            "watchlist.global_index_capped",
+            total=len(ranked),
+            kept=len(keywords),
+            limit=limit,
+            dropped=len(ranked) - limit,
+        )
+
     return {
-        "keywords": all_keywords,
+        "keywords": keywords,
         "client_count": len(rows),
-        "keyword_count": len(all_keywords),
+        "keyword_count": len(keywords),
     }
 
 
@@ -145,14 +185,21 @@ def _build_themes(dna: ClientDNA) -> list[str]:
 
 
 def _build_keywords(entities: list[dict], themes: list[str]) -> list[str]:
-    """Flat deduplicated list of all searchable strings: entity names + themes."""
+    """Search keywords for the Event Registry API: significant issuer tokens + DNA themes.
+
+    ISINs and tickers are excluded — they never appear in news headlines (§14.1).
+    Multi-word issuer names are decomposed into their significant single tokens so
+    that each keyword counts as one word against the API's per-query limit.
+    """
+    seen: set[str] = set()
     raw: list[str] = []
     for entity in entities:
-        if entity.get("issuer"):
-            raw.append(entity["issuer"])
-        if entity.get("ticker"):
-            raw.append(entity["ticker"])
-        if entity.get("isin"):
-            raw.append(entity["isin"])
-    raw.extend(themes)
-    return [kw for kw in list(dict.fromkeys(raw)) if kw]
+        for tok in significant_name_tokens(entity.get("issuer")):
+            if tok not in seen:
+                seen.add(tok)
+                raw.append(tok)
+    for tag in themes:
+        if tag and tag not in seen:
+            seen.add(tag)
+            raw.append(tag)
+    return raw

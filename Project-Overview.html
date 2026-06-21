@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Wealth Advisor Workbench — Project Overview</title>
+<title>SixEase — Project Overview</title>
 <style>
   :root{
     --bg:#0b0f17; --panel:#131a26; --panel2:#1a2435; --panel3:#212d42;
@@ -168,7 +168,7 @@
   <div class="wrap topbar">
     <div class="brand">
       <div class="logo">◆</div>
-      <div>Wealth Advisor Workbench <small>name TBD · SwissHacks 2026 · SIX × Noumena × NTT DATA</small></div>
+      <div>SixEase <small>SwissHacks 2026 · SIX × Noumena × NTT DATA</small></div>
     </div>
     <nav class="tabs" id="tabs">
       <button data-v="overview" class="active">Overview</button>
@@ -214,11 +214,11 @@
     <tr><th>Criterion</th><th>Weight</th><th>How we win it</th></tr>
     <tr><td><b>Creativity</b></td><td>25%</td><td>"Moments that matter" — not every signal is a trade; some are a phone call. Generative, preference‑driven UI.</td></tr>
     <tr><td><b>Trust &amp; Explainability</b></td><td>25%</td><td>Locked‑facts message generation, provenance on every claim, safe‑autonomy boundary, glass‑box reasoning.</td></tr>
-    <tr><td><b>Feasibility</b></td><td>20%</td><td>Built on the provided SIX MCP + Event Registry + Phoeniqs; companion layer = zero CRM migration.</td></tr>
+    <tr><td><b>Feasibility</b></td><td>20%</td><td>Built on the provided SIX MCP + Event Registry; local‑first LLM (Gemma 3 12B via Ollama) = on‑prem, no cloud lock‑in; companion layer = zero CRM migration.</td></tr>
     <tr><td><b>Visual Design</b></td><td>15%</td><td>Trust‑oriented generative workbench; the same data the RM's way.</td></tr>
     <tr><td><b>Presentation</b></td><td>15%</td><td>One scene: one event → two clients → two different human responses, each traceable.</td></tr>
   </table>
-  <p class="muted" style="margin-top:14px">Full specification: <span class="kbd">docs/Requirements.md</span> (§1–§19).</p>
+  <p class="muted" style="margin-top:14px">Full specification: <span class="kbd">docs/Requirements.md</span> (§1–§20).</p>
 </div>
 </section>
 
@@ -264,13 +264,14 @@
     <div class="arrowrow"><span>▲ data</span><span>▼ queries</span></div>
 
     <div class="layer">
-      <div class="lh">🗄 Data &amp; providers</div>
+      <div class="lh">🗄 Data, providers &amp; local runtime</div>
       <div class="nodes">
         <div class="node acc-teal"><b>CRM (system of record)</b><span>interaction notes · read + write‑back</span></div>
         <div class="node acc-blue"><b>SIX MCP</b><span>prices · symbology · listings (17 tools)</span></div>
         <div class="node acc-amber"><b>Event Registry</b><span>newsapi.ai · near‑real‑time + sentiment</span></div>
-        <div class="node acc-purple"><b>Phoeniqs LLM</b><span>OpenAI‑compatible · credits provided</span></div>
         <div class="node acc-green"><b>Portfolio data</b><span>holdings · CIO list · mandates</span></div>
+        <div class="node acc-purple"><b>Local LLM — Gemma 3 12B</b><span>Ollama (on‑prem) · OpenRouter / Phoeniqs fallback</span></div>
+        <div class="node acc-teal"><b>Local stack</b><span>Postgres+pgvector · Redis · MinIO · Whisper · Docker</span></div>
       </div>
     </div>
   </div>
@@ -353,7 +354,7 @@
     <div class="pipe">
       <div class="step"><div class="n">EVENT</div><b>RM dictates</b><span>after a client interaction</span></div>
       <div class="arr">→</div>
-      <div class="step"><div class="n">STT</div><b>Transcribe</b><span>Web Speech / STT</span></div>
+      <div class="step"><div class="n">STT</div><b>Transcribe</b><span>faster‑whisper (local, GPU)</span></div>
       <div class="arr">→</div>
       <div class="step"><div class="n">STRUCTURE</div><b>Note draft</b><span>date · medium · contact · body</span></div>
       <div class="arr">→</div>
@@ -413,7 +414,7 @@
   <div class="app">
     <div class="app-hd">
       <div class="logo">◆</div>
-      <div class="title">Advisor Workbench <small>AI relationship companion</small></div>
+      <div class="title">SixEase <small>AI relationship companion</small></div>
       <div class="sp"></div>
       <div class="bell" onclick="document.getElementById('acpanel').scrollIntoView({behavior:'smooth'})">🔔<span class="badge" id="bellc">3</span></div>
       <div class="av">SM</div>
@@ -491,11 +492,11 @@
     </div>
   </div>
   <div class="hr"></div>
-  <p class="muted">Parked items keep their rationale in <span class="kbd">docs/Requirements.md</span> §13–§19 and project memory.</p>
+  <p class="muted">Parked items keep their rationale in <span class="kbd">docs/Requirements.md</span> §13–§20 and project memory.</p>
 </div>
 </section>
 
-<div class="footer">Wealth Advisor Workbench · concept overview · generated for internal visualization · mock data is illustrative.</div>
+<div class="footer">SixEase · concept overview · generated for internal visualization · mock data is illustrative.</div>
 
 <script>
 /* ---- tab nav ---- */
@@ -634,7 +635,7 @@ const views={
 
   voice:()=>`
     <div class="note-banner">Voice → CRM — the RM dictates after a meeting; the system structures a note, proposes DNA updates &amp; tasks, then writes back on approval.</div>
-    <div class="w"><div class="wt"><b>🎙 Dictation</b><span class="src">Web Speech → Phoeniqs</span></div>
+    <div class="w"><div class="wt"><b>🎙 Dictation</b><span class="src">MediaRecorder → Whisper (local)</span></div>
       <div class="draft">“Just had coffee with Hubertus. Chloe is responding a little better to the new treatment — he was emotional but hopeful. He wants to increase the foundation endowment next quarter and asked me to look into that Geneva neuro‑genetics lab again. Keep everything aligned with the cause.”</div>
     </div>
     <div class="w"><div class="wt"><b>📝 Structured note <span class="tag t-amber">draft — RM approves</span></b><span class="src">→ write‑back to CRM</span></div>

@@ -1,8 +1,6 @@
 import { apiPost } from "./client";
 import type { WidgetSpec } from "../registry/types";
 
-export type ScopeTab = "all" | "clients" | "market" | "documents" | "analysis";
-
 export interface ChatTurn {
   role: "user" | "assistant";
   content: string;
@@ -10,7 +8,6 @@ export interface ChatTurn {
 
 export interface OrchestrateRequest {
   query: string;
-  scope: ScopeTab;
   client_id?: string | null;
   history?: ChatTurn[];
 }

@@ -28,11 +28,23 @@ httpx>=0.23.0,<0.28.0  # async HTTP for SIX JSON-RPC; pin range matches openai t
 # --- TASK-039: MailHog test-send (MSG9) ------------------------------------
 aiosmtplib==3.0.1    # async SMTP client; plain-text to mailhog:1025, no TLS
 
+# --- TASK-061: Microsoft Graph delegated sign-in (auth-code + PKCE) ---------
+msal==1.31.1         # official MSAL: OAuth auth-code/PKCE + refresh; token cache in Redis
+
 # --- TASK-046: voice note upload (multipart form) --------------------------
 python-multipart==0.0.20  # required by FastAPI for UploadFile / Form endpoints
 
 # --- TASK-053: LangGraph orchestrator -----------------------------------------
-langgraph>=1.0,<2.0   # StateGraph orchestrator; langchain-core transitive dep compatible with pydantic 2.x
+langchain>=0.3,<0.4       # chains, agents, memory, tools
+langchain-openai>=0.2,<0.3  # OpenAI-compatible chat/embeddings (Phoeniqs / Ollama)
+langgraph>=1.0,<2.0       # StateGraph orchestrator; langchain-core transitive dep compatible with pydantic 2.x
+
+# --- EPIC-06 C2: cross-encoder rerank precision gate (optional) --------------
+# Local ONNX cross-encoder (onnxruntime, no torch) for the news-match precision
+# gate. Only loaded when `news_cross_encoder_enabled=true`; the code lazy-imports
+# it so the app runs without it when the gate is off. Downloads the model on first
+# use, so the enabling deploy needs network once.
+fastembed>=0.3,<1.0
 
 # --- TASK-007: tests --------------------------------------------------------
 pytest==8.3.4         # test runner (first test dependency; project standard)

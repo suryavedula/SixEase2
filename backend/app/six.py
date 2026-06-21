@@ -67,6 +67,15 @@ class IntradaySnapshot(BaseModel):
     timestamp: str
 
 
+class BondTerms(BaseModel):
+    valor: str
+    isin: str | None
+    coupon_rate: float | None
+    coupon_type: str | None
+    maturity_date: str | None  # ISO 'YYYY-MM-DD' as returned by SIX
+    currency: str | None
+
+
 # ---------------------------------------------------------------------------
 # Singleton client
 # ---------------------------------------------------------------------------
@@ -283,6 +292,50 @@ async def get_intraday_snapshot(listing_id: str) -> IntradaySnapshot:
         last=last,
         volume=volume,
         timestamp=row.get("timestamp", ""),
+    )
+
+
+async def get_bond_terms(valor: str) -> BondTerms:
+    """Bond reference terms (coupon + maturity) for an instrument by Valor.
+
+    Uses `instrument_base` (accessible with the hackathon token — NOT the gated
+    `instrument_detail`; see docs/SIX_MCP.md §93). Raises ValueError if the
+    instrument returns no maturity date (e.g. not a bond / illiquid).
+    """
+    raw = await _call_tool(
+        "instrument_base",
+        {
+            "mode": "execute",
+            "valors": [valor],
+            "fields": [
+                "isin",
+                "currentCouponRate",
+                "currentCouponType",
+                "maturityDate",
+                "nominalCurrency",
+            ],
+        },
+    )
+    rows = _parse_table(raw)
+    row = rows[0] if rows else {}
+
+    maturity = row.get("maturityDate", "").strip()
+    if not maturity:
+        raise ValueError(f"[SIX] no maturityDate for valor {valor} (not a dated bond)")
+
+    coupon_str = row.get("currentCouponRate", "")
+    try:
+        coupon: float | None = float(coupon_str)
+    except (ValueError, TypeError):
+        coupon = None
+
+    return BondTerms(
+        valor=valor,
+        isin=row.get("isin") or None,
+        coupon_rate=coupon,
+        coupon_type=row.get("currentCouponType") or None,
+        maturity_date=maturity,
+        currency=row.get("nominalCurrency") or None,
     )
 
 

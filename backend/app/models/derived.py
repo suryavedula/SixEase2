@@ -251,3 +251,88 @@ class ClientWatchlist(UUIDMixin, TimestampMixin, Base):
     keywords: Mapped[list | None] = mapped_column(JSONB)   # flat deduped search-term list
 
     __table_args__ = (Index("ix_watchlist_client", "client_id", unique=True),)
+
+
+class ChangeEvent(UUIDMixin, TimestampMixin, Base):
+    """A book-wide change, event-centric (TASK-059, EPIC-08).
+
+    The event-centric *inversion* of per-client Alert / NewsItem signals: every
+    change reduces to one triggering entity (instrument / sector / client / macro),
+    fans out to all impacted clients by database-wide exposure, and is scored by
+    aggregate impact = Σ_clients(exposure_chf × magnitude × dna_relevance) × recency.
+
+    Materialised (delete-and-reload) by loaders/change_radar.py from POST
+    /admin/seed/radar; read top-N by GET /radar. Idempotent: a re-run rebuilds the
+    whole table from current Alert / NewsItem state.
+    """
+
+    __tablename__ = "change_events"
+
+    action: Mapped[str | None] = mapped_column(Text)  # "Drift breach", "CIO SELL flip", "News threat"…
+    entity_key: Mapped[str | None] = mapped_column(Text)  # canonical dedup key: isin: / sac: / news: / client:
+    entity_type: Mapped[str | None] = mapped_column(Text)  # instrument | sector | client | macro
+    entity_label: Mapped[str | None] = mapped_column(Text)  # human label (issuer, sector, headline)
+    source: Mapped[str | None] = mapped_column(Text)  # news | cio | drift | dna | email
+    event_ts: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # recency input
+    magnitude: Mapped[float | None] = mapped_column(Float)  # normalised event magnitude
+    impact_score: Mapped[float | None] = mapped_column(Float)  # aggregate Σ(exposure × magnitude × dna) × recency
+    client_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    total_exposure_chf: Mapped[float | None] = mapped_column(Numeric(15, 2))
+    impacted_clients: Mapped[list | None] = mapped_column(JSONB)  # per-client breakdown (G2)
+    suggested_batch_action: Mapped[str | None] = mapped_column(Text)  # batch op when one entity hits many
+    sources: Mapped[list | None] = mapped_column(JSONB)  # citeable origins (G2)
+    # No-fallbacks (TASK-006 / project rule): set when the entity resolved to zero
+    # impacted clients — surfaced explicitly, never silently dropped.
+    unresolved_reason: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        Index("ix_change_events_impact", "impact_score"),
+        Index("ix_change_events_entity", "entity_key"),
+        Index("ix_change_events_type", "entity_type"),
+    )
+
+
+class RadarDelivery(UUIDMixin, TimestampMixin, Base):
+    """Dispatch ledger: what the proactive radar has already pushed to the RM.
+
+    change_events is delete-and-reloaded every refresh, so delivery state cannot
+    live there — it keys off the stable `entity_key` here instead. The dispatch
+    loop (radar_dispatch.py) checks this table to avoid re-notifying the same change
+    (and only re-notifies when impact rises materially above `impact_at_delivery`).
+    The daily digest is recorded as one row with channel="digest" and a date-stamped
+    entity_key (`digest:YYYY-MM-DD`). RM-only delivery — nothing here reaches a
+    client (autonomy boundary G1).
+    """
+
+    __tablename__ = "radar_deliveries"
+
+    entity_key: Mapped[str] = mapped_column(Text, nullable=False)
+    channel: Mapped[str] = mapped_column(Text, nullable=False)  # sse | email | digest
+    delivered_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), nullable=False
+    )
+    impact_at_delivery: Mapped[float | None] = mapped_column(Float)
+
+    __table_args__ = (Index("ix_radar_deliveries_entity", "entity_key"),)
+
+
+class RmFollow(UUIDMixin, TimestampMixin, Base):
+    """An RM-curated "My Topics" follow (Change Radar tabs).
+
+    The relationship manager pins entities/keywords they personally track; the
+    Change Radar "My Topics" tab shows only change events matching one of these.
+    Single-RM app — one global list, no user scoping. Curated inline from radar
+    events (entity_key + label) or added free-text. `keyword` is the lowercased
+    match term; an event matches when its `entity_key` equals this row's
+    entity_key, or its label/entity_key contains `keyword`. RM-only — never
+    touches a client (autonomy boundary G1).
+    """
+
+    __tablename__ = "rm_follows"
+
+    label: Mapped[str] = mapped_column(Text, nullable=False)  # human label shown in the UI
+    keyword: Mapped[str] = mapped_column(Text, nullable=False)  # lowercased match term (deduped)
+    entity_key: Mapped[str | None] = mapped_column(Text)  # canonical key when pinned from an event
+    entity_type: Mapped[str | None] = mapped_column(Text)  # instrument | sector | client | macro
+
+    __table_args__ = (Index("ix_rm_follows_keyword", "keyword", unique=True),)

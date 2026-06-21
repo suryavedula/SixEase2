@@ -11,11 +11,12 @@ Owner types:
 
 import uuid
 
-from sqlalchemy import delete, select
+from openai import AsyncOpenAI
+from pgvector.sqlalchemy import Vector
+from sqlalchemy import cast, delete, literal, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.llm import get_client
 from app.logging import get_logger
 from app.models.derived import ClientDNA
 from app.models.embedding import Embedding
@@ -26,18 +27,82 @@ settings = get_settings()
 
 _BATCH_SIZE = 32  # safe upper bound for Ollama single-request embedding
 
+# Embeddings ALWAYS run on Ollama (`ollama_embed_model`), independent of
+# `llm_provider`. The active LLM client (app.llm.get_client) follows LLM_PROVIDER —
+# which for a Phoeniqs deployment has no `nomic-embed-text`, so routing embeddings
+# through it 400s. This dedicated client pins embeddings to the Ollama endpoint.
+_embed_client: AsyncOpenAI | None = None
+# Circuit breaker: flips True after the first embedding failure so the relevance
+# gate degrades to a no-op (logged once) instead of erroring per article. Reset on
+# process restart.
+_embeddings_degraded = False
+
+
+def _get_embed_client() -> AsyncOpenAI:
+    global _embed_client
+    if _embed_client is None:
+        # Ollama ignores the key; the openai SDK rejects an empty string.
+        _embed_client = AsyncOpenAI(base_url=settings.ollama_base_url, api_key="nokey")
+    return _embed_client
+
 
 async def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embed a batch of texts via the Ollama /v1/embeddings endpoint.
 
-    Reuses the AsyncOpenAI singleton from app.llm — no second client needed.
+    Uses a dedicated Ollama-pinned client (NOT the active LLM provider), so
+    embeddings work regardless of LLM_PROVIDER. Raises on transport/model error —
+    callers that must not block (the relevance gate) catch it; seed jobs let it
+    surface so the misconfiguration is fixed at source.
     """
-    client = get_client()
+    client = _get_embed_client()
     response = await client.embeddings.create(
         model=settings.ollama_embed_model,
         input=texts,
     )
     return [item.embedding for item in response.data]
+
+
+async def relevance_distances(session: AsyncSession, text: str) -> dict[str, float]:
+    """Cosine distance from an article's embedding to each client's DNA profile vector.
+
+    This is the local, zero-hosted-cost answer to "does this news affect the client
+    profile?": embed the article once (Ollama, free) and compare against the already-
+    stored `client_dna` vectors via the pgvector HNSW cosine index. Returns
+    {client_id_str: distance} with **lower = more on-profile** (0 = identical,
+    1 = orthogonal). Clients without a DNA embedding are simply absent — the caller
+    treats an absent client as "unknown" and does not gate on it.
+
+    NEVER raises and NEVER blocks the pipeline: the relevance gate is an additive
+    precision filter, so if Ollama is unreachable / the gate is disabled, it returns
+    {} (no gating) and logs the degradation once, rather than halting news fan-out.
+    """
+    global _embeddings_degraded
+    if _embeddings_degraded or not settings.news_relevance_enabled or not text.strip():
+        return {}
+
+    try:
+        qv = (await embed_texts([text]))[0]
+    except Exception as exc:
+        _embeddings_degraded = True  # stop retrying every article; gate becomes no-op
+        log.warning(
+            "embeddings.relevance_degraded",
+            reason=str(exc),
+            note="relevance gate disabled until restart; news fan-out continues ungated",
+        )
+        return {}
+    # cast(literal(str(qv)), Vector(...)) hands the Python list to pgvector as a
+    # properly-typed comparand for <=> without raw SQL (mirrors routers/similarity).
+    qv_col = cast(literal(str(qv)), Vector(settings.embed_dim))
+    stmt = (
+        select(
+            ClientDNA.client_id,
+            Embedding.vector.cosine_distance(qv_col).label("distance"),
+        )
+        .join(Embedding, Embedding.owner_id == ClientDNA.id)
+        .where(Embedding.owner_type == "client_dna")
+    )
+    rows = (await session.execute(stmt)).all()
+    return {str(client_id): float(distance) for client_id, distance in rows}
 
 
 async def _upsert_embedding(

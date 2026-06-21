@@ -14,9 +14,15 @@ export type WidgetDensity = "dense" | "narrative";
 export interface Prefs {
   defaultView: DefaultView;
   density: WidgetDensity;
+  // Action Center rail open/closed (TASK-070). Persisted so it survives reload.
+  actionCenterOpen: boolean;
 }
 
-const DEFAULT_PREFS: Prefs = { defaultView: "holdings", density: "narrative" };
+const DEFAULT_PREFS: Prefs = {
+  defaultView: "holdings",
+  density: "narrative",
+  actionCenterOpen: true,
+};
 const STORAGE_KEY = "waw-prefs";
 
 function readInitialPrefs(): Prefs {
@@ -36,7 +42,12 @@ function readInitialPrefs(): Prefs {
       parsed.density === "dense" || parsed.density === "narrative"
         ? parsed.density
         : DEFAULT_PREFS.density;
-    return { defaultView, density };
+    // Older blobs predate this key — fall back to default when absent.
+    const actionCenterOpen =
+      typeof parsed.actionCenterOpen === "boolean"
+        ? parsed.actionCenterOpen
+        : DEFAULT_PREFS.actionCenterOpen;
+    return { defaultView, density, actionCenterOpen };
   } catch {
     return DEFAULT_PREFS;
   }
